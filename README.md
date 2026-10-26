@@ -11,6 +11,7 @@
 
 - `labs/electric-field.html`：拖动电荷，实时看电场线、等势线、场强和电势。
 - `labs/potential-work.html`：沿三条路径移动电荷，验证电场力做功与路径无关。
+- `labs/charged-particle.html`：调节磁场、速度、质量和电荷，观察带电粒子的圆周运动。
 
 ## 其他
 

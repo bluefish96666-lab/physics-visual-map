@@ -38,6 +38,7 @@ window.PHET = {
 window.LABS = {
   'electric-field': { name: '电场线与等势线', desc: '拖动电荷，实时看电场线、等势线、场强和电势' },
   'potential-work': { name: '电势差与电场力做功', desc: '沿三条路径移动电荷，验证做功与路径无关' },
+  'charged-particle': { name: '带电粒子的圆周运动', desc: '调节磁场、速度与电荷，观察半径、周期和转向' },
 };
 
 window.CURRICULUM = [
@@ -262,7 +263,7 @@ window.CURRICULUM = [
   {
     id: 'b5', name: '选择性必修第二册', chapters: [
       {
-        id: 'b5c1', num: '第一章', title: '安培力与洛伦兹力', domain: 'em', fig: 'lorentz',
+        id: 'b5c1', num: '第一章', title: '安培力与洛伦兹力', domain: 'em', fig: 'lorentz', labs: ['charged-particle'],
         sections: [
           ['磁场对通电导线的作用力', '安培力方向用左手定则判断，垂直于 B 和 I 决定的平面。', 'F = ILB sinθ'],
           ['磁场对运动电荷的作用力', '洛伦兹力方向用左手定则（四指指向正电荷运动方向）；洛伦兹力始终与速度垂直，永不做功。', 'F = qvB'],

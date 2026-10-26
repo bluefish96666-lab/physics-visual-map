@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>电势差与电场力做功 · 交互实验</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; color: #1f2937; background: #f3f4f6; }
+  a { color: #2563eb; text-decoration: none; }
+  #top { height: 44px; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: #fff; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+  #top b { font-size: 16px; }
+  #app { display: flex; height: calc(100% - 44px); }
+  #left { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #stage { flex: 1; position: relative; min-height: 300px; }
+  #chartWrap { height: 230px; position: relative; border-top: 1px solid #e5e7eb; background: #fff; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: #fff; touch-action: none; }
+  #panel { width: 360px; flex-shrink: 0; overflow-y: auto; padding: 12px 16px 24px; background: #fff; border-left: 1px solid #e5e7eb; }
+  h2 { font-size: 14px; margin: 14px 0 8px; color: #374151; border-left: 3px solid #2563eb; padding-left: 6px; }
+  .row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; }
+  .row input[type=range] { flex: 1; }
+  .row .val { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+  label.chk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; margin-right: 10px; cursor: pointer; }
+  button { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: pointer; }
+  button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+  button:hover { filter: brightness(0.97); }
+  .chain { display: flex; flex-direction: column; gap: 4px; }
+  .node { border: 1px solid #c7d2fe; background: #eef2ff; border-radius: 8px; padding: 6px 10px; font-size: 13px; line-height: 1.6; }
+  .node .f { font-weight: bold; color: #1e3a8a; }
+  .node .v { font-variant-numeric: tabular-nums; color: #111827; }
+  .link { text-align: center; font-size: 12px; color: #6b7280; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl td { padding: 3px 4px; border-bottom: 1px solid #f3f4f6; }
+  .tbl td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: bold; }
+  .tip { font-size: 13px; line-height: 1.7; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 10px; }
+  .good { color: #15803d; } .bad { color: #b91c1c; }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    #app { flex-direction: column; height: auto; }
+    #stage { height: 60vh; flex: none; }
+    #panel { width: 100%; border-left: none; }
+  }
+</style>
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>电势差与电场力做功</b><span style="color:#6b7280">必修第三册 · 第十章 静电场中的能量</span></div>
+<div id="app">
+  <div id="left">
+    <div id="stage"><canvas id="cv"></canvas></div>
+    <div id="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">拖动 <b>A</b>、<b>B</b> 两点，点「开始移动」，让试探电荷沿三条不同路径从 A 走到 B。看下方曲线：<b>过程不同，终点的做功一样</b>。</div>
+
+    <h2>实验条件</h2>
+    <div class="row">场强 E <input type="range" id="E" min="100" max="1000" step="50" value="200"><span class="val" id="Ev"></span></div>
+    <div class="row">电荷量大小 |q| <input type="range" id="qm" min="1" max="5" step="1" value="2"><span class="val" id="qv"></span></div>
+    <div class="row">
+      <label class="chk"><input type="radio" name="sign" value="1" checked> 正电荷</label>
+      <label class="chk"><input type="radio" name="sign" value="-1"> 负电荷</label>
+    </div>
+    <div class="row">零电势位置
+      <label class="chk"><input type="radio" name="ref" value="neg" checked> 负极板接地</label>
+      <label class="chk"><input type="radio" name="ref" value="mid"> 中线</label>
+      <label class="chk"><input type="radio" name="ref" value="pos"> 正极板</label>
+    </div>
+    <div class="row">路径
+      <label class="chk"><input type="checkbox" data-path="0" checked> <span style="color:#2563eb">① 直线</span></label>
+      <label class="chk"><input type="checkbox" data-path="1" checked> <span style="color:#16a34a">② 折线</span></label>
+      <label class="chk"><input type="checkbox" data-path="2" checked> <span style="color:#9333ea">③ 曲线</span></label>
+    </div>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始移动</button><button id="reset">回到 A</button></div>
+
+    <h2>测量结果</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>知识链（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>换零电势点试试</h2>
+    <div class="tip">切换「零电势位置」：φ<sub>A</sub>、φ<sub>B</sub>、电势能都会变，但 <b>U<sub>AB</sub> 和 W<sub>AB</sub> 不变</b>。电势是相对的，电势差是绝对的。</div>
+  </aside>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const PL = 8, YL = 4.5;
+const COLORS = ['#2563eb', '#16a34a', '#9333ea'];
+const NAMES = ['① 直线', '② 折线', '③ 曲线'];
+
+const st = {
+  E: 200, qm: 2, sign: 1, ref: 'neg',
+  A: { x: -5, y: 2 }, B: { x: 4, y: -2 },
+  show: [true, true, true],
+  t: 0, playing: false,
+};
+const q = () => st.sign * st.qm;
+
+const cv = $('cv'), ctx = cv.getContext('2d');
+const ch = $('chart'), cctx = ch.getContext('2d');
+let W = 0, H = 0, CW = 0, CH = 0, SC = 30, DPR = 1;
+
+const sx = x => W / 2 + x * SC;
+const sy = y => H / 2 - y * SC;
+const wx = px => (px - W / 2) / SC;
+const wy = py => (H / 2 - py) / SC;
+
+function refX() { return st.ref === 'neg' ? PL : st.ref === 'pos' ? -PL : 0; }
+// x 单位 cm，E 单位 V/m，φ 单位 V
+const phi = x => -st.E * (x - refX()) / 100;
+
+// ---------- 路径 ----------
+const clampX = x => Math.max(-PL + 0.6, Math.min(PL - 0.6, x));
+const clampY = y => Math.max(-YL + 0.3, Math.min(YL - 0.3, y));
+
+function polyline(pts, n) {
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      out.push({ x: pts[i].x + (pts[i + 1].x - pts[i].x) * t, y: pts[i].y + (pts[i + 1].y - pts[i].y) * t });
+    }
+  }
+  out.push({ ...pts[pts.length - 1] });
+  return out;
+}
+
+function bezier(p0, p1, p2, p3, n) {
+  const out = [];
+  for (let k = 0; k <= n; k++) {
+    const t = k / n, u = 1 - t;
+    out.push({
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+    });
+  }
+  return out;
+}
+
+function buildPaths() {
+  const A = st.A, B = st.B;
+  const dir = Math.sign(B.x - A.x) || 1;
+  const yArc = (A.y + B.y) / 2 > 0 ? -YL : YL;
+  const p = [
+    polyline([A, B], 120),
+    polyline([A, { x: B.x, y: A.y }, B], 80),
+    bezier(A,
+      { x: clampX(A.x - dir * 4), y: clampY(yArc) },
+      { x: clampX(B.x + dir * 4), y: clampY(yArc) },
+      B, 200),
+  ];
+  return p.map(pts => {
+    let s = 0;
+    const ss = [0], ws = [0];
+    for (let i = 1; i < pts.length; i++) {
+      s += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      ss.push(s);
+      ws.push(q() * (phi(A.x) - phi(pts[i].x)));
+    }
+    return { pts, ss, ws, len: s };
+  });
+}
+
+let paths = [];
+
+function sampleAt(path, t) {
+  const target = t * path.len;
+  let i = 1;
+  while (i < path.ss.length - 1 && path.ss[i] < target) i++;
+  const s0 = path.ss[i - 1], s1 = path.ss[i];
+  const f = s1 > s0 ? (target - s0) / (s1 - s0) : 0;
+  const a = path.pts[i - 1], b = path.pts[i];
+  const x = a.x + (b.x - a.x) * f, y = a.y + (b.y - a.y) * f;
+  return { x, y, s: target, w: q() * (phi(st.A.x) - phi(x)) };
+}
+
+// ---------- 绘制：电场 ----------
+function arrow(c, x, y, ux, uy, size, color) {
+  c.beginPath();
+  c.moveTo(x + ux * size, y + uy * size);
+  c.lineTo(x - ux * size * 0.6 - uy * size * 0.55, y - uy * size * 0.6 + ux * size * 0.55);
+  c.lineTo(x - ux * size * 0.6 + uy * size * 0.55, y - uy * size * 0.6 - ux * size * 0.55);
+  c.closePath();
+  c.fillStyle = color;
+  c.fill();
+}
+
+function text(c, s, x, y, color, font = '13px "Microsoft YaHei"', align = 'center') {
+  c.font = font;
+  c.textAlign = align;
+  c.textBaseline = 'middle';
+  c.lineWidth = 3;
+  c.strokeStyle = 'rgba(255,255,255,.92)';
+  c.strokeText(s, x, y);
+  c.fillStyle = color;
+  c.fillText(s, x, y);
+}
+
+const fmt = (v, d = 1) => {
+  const r = Math.abs(v) < 0.5 * Math.pow(10, -d) ? 0 : v;
+  return r.toFixed(d).replace('-', '−');
+};
+
+function drawField() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.beginPath();
+  for (let x = -PL; x <= PL; x++) { ctx.moveTo(sx(x), sy(YL)); ctx.lineTo(sx(x), sy(-YL)); }
+  for (let y = -Math.floor(YL); y <= YL; y++) { ctx.moveTo(sx(-PL), sy(y)); ctx.lineTo(sx(PL), sy(y)); }
+  ctx.strokeStyle = '#f1f2f6';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  for (let x = -6; x <= 6; x += 2) {
+    ctx.save();
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(sx(x), sy(YL));
+    ctx.lineTo(sx(x), sy(-YL));
+    ctx.strokeStyle = 'rgba(37,99,235,.55)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.restore();
+    text(ctx, `${fmt(phi(x))} V`, sx(x), sy(YL) - 10, '#1d4ed8', '12px "Microsoft YaHei"');
+  }
+
+  for (let y = -4; y <= 4; y += 1.6) {
+    ctx.beginPath();
+    ctx.moveTo(sx(-PL), sy(y));
+    ctx.lineTo(sx(PL), sy(y));
+    ctx.strokeStyle = 'rgba(220,38,38,.45)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    for (const x of [-5, 1, 6.5]) arrow(ctx, sx(x), sy(y), 1, 0, 6, 'rgba(220,38,38,.7)');
+  }
+
+  const plate = (x, color, sign, label) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(sx(x) - 5, sy(YL + 0.3), 10, (2 * YL + 0.6) * SC);
+    for (let y = -4; y <= 4; y += 1) text(ctx, sign, sx(x) + (x < 0 ? -16 : 16), sy(y), color, 'bold 15px sans-serif');
+    text(ctx, label, sx(x), sy(-YL - 0.3) + 14, color, '12px "Microsoft YaHei"');
+  };
+  plate(-PL, '#dc2626', '+', '正极板');
+  plate(PL, '#2563eb', '−', st.ref === 'neg' ? '负极板（接地 φ=0）' : '负极板');
+
+  const x0 = refX();
+  if (st.ref !== 'neg') {
+    ctx.beginPath();
+    ctx.moveTo(sx(x0), sy(YL));
+    ctx.lineTo(sx(x0), sy(-YL));
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    text(ctx, 'φ = 0', sx(x0) + (st.ref === 'pos' ? 34 : 0), sy(-YL) - 12, '#111827', 'bold 12px "Microsoft YaHei"');
+  }
+
+  text(ctx, `E = ${st.E} V/m  →`, sx(0), sy(-YL - 0.3) + 14, '#b91c1c', 'bold 13px "Microsoft YaHei"');
+}
+
+function drawProjection() {
+  const A = st.A, B = st.B, yb = -YL + 0.15;
+  ctx.save();
+  ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = '#6b7280';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(sx(A.x), sy(A.y)); ctx.lineTo(sx(A.x), sy(yb));
+  ctx.moveTo(sx(B.x), sy(B.y)); ctx.lineTo(sx(B.x), sy(yb));
+  ctx.stroke();
+  ctx.restore();
+  if (Math.abs(B.x - A.x) > 0.05) {
+    const u = Math.sign(B.x - A.x);
+    ctx.beginPath();
+    ctx.moveTo(sx(A.x), sy(yb)); ctx.lineTo(sx(B.x) - u * 6, sy(yb));
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    arrow(ctx, sx(B.x) - u * 4, sy(yb), u, 0, 7, '#374151');
+  }
+  text(ctx, `d = ${fmt(B.x - A.x)} cm（A→B 沿电场方向的位移）`, sx((A.x + B.x) / 2), sy(yb) - 12, '#374151', '12px "Microsoft YaHei"');
+}
+
+function drawPaths() {
+  paths.forEach((p, i) => {
+    if (!st.show[i]) return;
+    ctx.beginPath();
+    p.pts.forEach((pt, k) => k ? ctx.lineTo(sx(pt.x), sy(pt.y)) : ctx.moveTo(sx(pt.x), sy(pt.y)));
+    ctx.strokeStyle = COLORS[i];
+    ctx.globalAlpha = 0.75;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    const mid = p.pts[Math.floor(p.pts.length * 0.5)];
+    text(ctx, NAMES[i].slice(0, 1), sx(mid.x) + 10, sy(mid.y) - 10, COLORS[i], 'bold 14px sans-serif');
+  });
+}
+
+function drawPoint(p, name) {
+  const x = sx(p.x), y = sy(p.y);
+  ctx.beginPath();
+  ctx.arc(x, y, 8, 0, Math.PI * 2);
+  ctx.fillStyle = '#111827';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  text(ctx, `${name}  φ=${fmt(phi(p.x))} V`, x, y - 20, '#111827', 'bold 13px "Microsoft YaHei"');
+}
+
+function drawMovers() {
+  if (st.t <= 0) return;
+  paths.forEach((p, i) => {
+    if (!st.show[i]) return;
+    const m = sampleAt(p, st.t);
+    const x = sx(m.x), y = sy(m.y);
+    const F = q() > 0 ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + F * 30, y);
+    ctx.strokeStyle = '#ea580c';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    arrow(ctx, x + F * 32, y, F, 0, 8, '#ea580c');
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = q() > 0 ? '#dc2626' : '#2563eb';
+    ctx.fill();
+    ctx.strokeStyle = COLORS[i];
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    text(ctx, q() > 0 ? '+' : '−', x, y + 1, '#fff', 'bold 14px sans-serif');
+  });
+  const first = paths.find((_, i) => st.show[i]);
+  if (first) {
+    const m = sampleAt(first, st.t);
+    text(ctx, 'F', sx(m.x) + (q() > 0 ? 46 : -46), sy(m.y), '#ea580c', 'bold 13px sans-serif');
+  }
+}
+
+// ---------- 绘制：W-s 图 ----------
+function drawChart() {
+  cctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cctx.fillStyle = '#fff';
+  cctx.fillRect(0, 0, CW, CH);
+  const vis = paths.filter((_, i) => st.show[i]);
+  if (!vis.length) return;
+  const L = { l: 64, r: 130, t: 30, b: 36 };
+  const maxS = Math.max(...vis.map(p => p.len)) * 1.03;
+  let lo = Math.min(0, ...vis.flatMap(p => p.ws)), hi = Math.max(0, ...vis.flatMap(p => p.ws));
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.12;
+  lo -= pad; hi += pad;
+  const X = s => L.l + s / maxS * (CW - L.l - L.r);
+  const Y = w => CH - L.b - (w - lo) / (hi - lo) * (CH - L.t - L.b);
+
+  cctx.strokeStyle = '#9ca3af';
+  cctx.lineWidth = 1;
+  cctx.beginPath();
+  cctx.moveTo(L.l, L.t - 8); cctx.lineTo(L.l, CH - L.b); cctx.lineTo(CW - L.r + 10, CH - L.b);
+  cctx.stroke();
+  cctx.beginPath();
+  cctx.moveTo(L.l, Y(0)); cctx.lineTo(CW - L.r, Y(0));
+  cctx.strokeStyle = '#d1d5db';
+  cctx.stroke();
+  text(cctx, '0', L.l - 8, Y(0), '#6b7280', '12px sans-serif', 'right');
+  text(cctx, '电场力做功 W / μJ', L.l + 4, 12, '#374151', 'bold 12px "Microsoft YaHei"', 'left');
+  text(cctx, '走过的路程 s / cm', CW - L.r, CH - 14, '#374151', '12px "Microsoft YaHei"', 'right');
+  for (let s = 0; s <= maxS; s += maxS > 30 ? 10 : 5) {
+    text(cctx, String(s), X(s), CH - L.b + 12, '#6b7280', '11px sans-serif');
+  }
+
+  const Wab = vis[0].ws[vis[0].ws.length - 1];
+  cctx.save();
+  cctx.setLineDash([6, 4]);
+  cctx.beginPath();
+  cctx.moveTo(L.l, Y(Wab)); cctx.lineTo(CW - L.r, Y(Wab));
+  cctx.strokeStyle = '#111827';
+  cctx.stroke();
+  cctx.restore();
+  text(cctx, `W_AB = ${fmt(Wab, 2)} μJ`, CW - L.r + 6, Y(Wab), '#111827', 'bold 13px "Microsoft YaHei"', 'left');
+  text(cctx, fmt(Wab, 1), L.l - 8, Y(Wab), '#111827', '12px sans-serif', 'right');
+
+  paths.forEach((p, i) => {
+    if (!st.show[i]) return;
+    const upto = st.t > 0 ? st.t * p.len : p.len;
+    cctx.beginPath();
+    for (let k = 0; k < p.ss.length && p.ss[k] <= upto + 1e-9; k++) {
+      k ? cctx.lineTo(X(p.ss[k]), Y(p.ws[k])) : cctx.moveTo(X(p.ss[k]), Y(p.ws[k]));
+    }
+    cctx.strokeStyle = COLORS[i];
+    cctx.lineWidth = 2.5;
+    cctx.globalAlpha = st.t > 0 ? 1 : 0.35;
+    cctx.stroke();
+    cctx.globalAlpha = 1;
+    if (st.t > 0) {
+      const m = sampleAt(p, st.t);
+      cctx.beginPath();
+      cctx.arc(X(m.s), Y(m.w), 5, 0, Math.PI * 2);
+      cctx.fillStyle = COLORS[i];
+      cctx.fill();
+    }
+    text(cctx, `${NAMES[i]}：路程 ${fmt(p.len)} cm`, L.l + 150 + i * 150, 12, COLORS[i], '12px "Microsoft YaHei"', 'left');
+  });
+}
+
+// ---------- 读数 ----------
+function updatePanel() {
+  const A = st.A, B = st.B, qq = q();
+  const pa = phi(A.x), pb = phi(B.x), U = pa - pb, d = B.x - A.x;
+  const Wab = qq * U, epa = qq * pa, epb = qq * pb;
+  $('Ev').textContent = `${st.E} V/m`;
+  $('qv').textContent = `${qq > 0 ? '+' : '−'}${st.qm} μC`;
+  $('tbl').innerHTML = `
+    <tr><td>A 点电势 φ<sub>A</sub></td><td>${fmt(pa)} V</td></tr>
+    <tr><td>B 点电势 φ<sub>B</sub></td><td>${fmt(pb)} V</td></tr>
+    <tr><td>电势差 U<sub>AB</sub> = φ<sub>A</sub> − φ<sub>B</sub></td><td>${fmt(U)} V</td></tr>
+    <tr><td>沿电场方向距离 d</td><td>${fmt(d)} cm</td></tr>
+    <tr><td>E·d = ${st.E} × ${fmt(d / 100, 3)} m</td><td>${fmt(st.E * d / 100)} V</td></tr>
+    <tr><td>电势能 E<sub>pA</sub> = qφ<sub>A</sub></td><td>${fmt(epa)} μJ</td></tr>
+    <tr><td>电势能 E<sub>pB</sub> = qφ<sub>B</sub></td><td>${fmt(epb)} μJ</td></tr>
+    <tr><td>电场力做功 W<sub>AB</sub> = qU<sub>AB</sub></td><td>${fmt(Wab, 2)} μJ</td></tr>`;
+  const verdict = Math.abs(Wab) < 0.005 ? '电场力不做功，电势能不变（A、B 在同一等势面上）'
+    : Wab > 0 ? '<span class="good">电场力做正功 → 电势能减少</span>'
+    : '<span class="bad">电场力做负功 → 电势能增加</span>';
+  $('chain').innerHTML = `
+    <div class="node"><span class="f">匀强电场：U<sub>AB</sub> = E·d</span><br>
+      <span class="v">${st.E} V/m × ${fmt(d / 100, 3)} m = ${fmt(U)} V</span><br>
+      <span style="font-size:12px;color:#6b7280">d 是沿电场方向的距离，不是 A、B 的直线距离</span></div>
+    <div class="link">↓ 电势差 = 两点电势之差</div>
+    <div class="node"><span class="f">U<sub>AB</sub> = φ<sub>A</sub> − φ<sub>B</sub></span><br>
+      <span class="v">${fmt(pa)} − (${fmt(pb)}) = ${fmt(U)} V</span></div>
+    <div class="link">↓ 乘以电荷量（带正负号代入）</div>
+    <div class="node"><span class="f">W<sub>AB</sub> = qU<sub>AB</sub></span><br>
+      <span class="v">(${qq > 0 ? '+' : '−'}${st.qm} μC) × (${fmt(U)} V) = ${fmt(Wab, 2)} μJ</span></div>
+    <div class="link">↓ 功是能量转化的量度</div>
+    <div class="node"><span class="f">W<sub>AB</sub> = E<sub>pA</sub> − E<sub>pB</sub> = −ΔE<sub>p</sub></span><br>
+      <span class="v">${fmt(epa)} − (${fmt(epb)}) = ${fmt(Wab, 2)} μJ</span><br>${verdict}</div>`;
+}
+
+function draw() {
+  paths = buildPaths();
+  drawField();
+  drawProjection();
+  drawPaths();
+  drawPoint(st.A, 'A');
+  drawPoint(st.B, 'B');
+  drawMovers();
+  drawChart();
+  updatePanel();
+}
+
+let pending = false;
+function render() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; draw(); });
+}
+
+// ---------- 动画 ----------
+let last = 0;
+function tick(ts) {
+  if (!st.playing) return;
+  const dt = last ? (ts - last) / 1000 : 0;
+  last = ts;
+  st.t = Math.min(1, st.t + dt / 3.5);
+  draw();
+  if (st.t >= 1) { st.playing = false; $('play').textContent = '▶ 再走一次'; return; }
+  requestAnimationFrame(tick);
+}
+$('play').addEventListener('click', () => {
+  if (st.playing) return;
+  st.t = 0.0001;
+  st.playing = true;
+  last = 0;
+  $('play').textContent = '移动中…';
+  requestAnimationFrame(tick);
+});
+$('reset').addEventListener('click', () => { st.playing = false; st.t = 0; $('play').textContent = '▶ 开始移动'; render(); });
+
+// ---------- 拖动 A、B ----------
+let drag = null;
+function pickPoint(e) {
+  const r = cv.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  for (const p of [st.A, st.B]) if (Math.hypot(px - sx(p.x), py - sy(p.y)) < 14) return { p, px, py };
+  return { p: null, px, py };
+}
+function onDown(e) {
+  const h = pickPoint(e);
+  if (!h.p) return;
+  drag = h.p;
+  try { cv.setPointerCapture(e.pointerId); } catch { /* 没有对应的活动指针时忽略 */ }
+  st.playing = false;
+  st.t = 0;
+  $('play').textContent = '▶ 开始移动';
+}
+function onMove(e) {
+  const h = pickPoint(e);
+  if (!drag) { cv.style.cursor = h.p ? 'grab' : 'default'; return; }
+  drag.x = Math.round(clampX(wx(h.px)) * 2) / 2;
+  drag.y = Math.round(clampY(wy(h.py)) * 2) / 2;
+  render();
+}
+cv.addEventListener('pointerdown', onDown);
+cv.addEventListener('pointermove', onMove);
+cv.addEventListener('pointerup', () => { drag = null; });
+cv.addEventListener('pointercancel', () => { drag = null; });
+
+// ---------- 控件 ----------
+$('E').addEventListener('input', e => { st.E = +e.target.value; render(); });
+$('qm').addEventListener('input', e => { st.qm = +e.target.value; render(); });
+document.querySelectorAll('input[name=sign]').forEach(el => el.addEventListener('change', () => { st.sign = +el.value; render(); }));
+document.querySelectorAll('input[name=ref]').forEach(el => el.addEventListener('change', () => { st.ref = el.value; render(); }));
+document.querySelectorAll('[data-path]').forEach(el => el.addEventListener('change', () => { st.show[+el.dataset.path] = el.checked; render(); }));
+
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  W = $('stage').clientWidth; H = $('stage').clientHeight;
+  CW = $('chartWrap').clientWidth; CH = $('chartWrap').clientHeight;
+  SC = Math.min(W / (2 * PL + 3), H / (2 * YL + 2.6));
+  for (const [c, w, h] of [[cv, W, H], [ch, CW, CH]]) { c.width = Math.round(w * DPR); c.height = Math.round(h * DPR); }
+  draw();
+}
+new ResizeObserver(resize).observe($('left'));
+</script>
+</body>
+</html>

@@ -48,6 +48,7 @@ window.LABS = {
   'shm': { name: '简谐运动、单摆与共振', desc: 'x–t 图像读 v、a，竖直弹簧振子，单摆周期与测 g，共振曲线', icon: '∽' },
   'wave': { name: '机械波：图像、多解与干涉', desc: '同侧法、波动图像与振动图像、两时刻波形多解、干涉加强点', icon: '〰' },
   'light': { name: '光的折射、全反射与双缝干涉', desc: '半圆砖临界角、平行玻璃砖侧移、三棱镜偏向角、Δx = lλ/d', icon: '◭' },
+  'molecular': { name: '分子力、分子势能与油膜法', desc: 'F–r 与 E_p–r 图像、乙分子释放后的运动、速率分布随温度变化、油膜法误差分析', icon: '⚬' },
   'gas': { name: '气体实验定律与热力学第一定律', desc: '水银柱转动与溢出、汽缸卡口分段加热、p–V 循环判断吸放热', icon: '♨' },
   'quantum': { name: '光电效应与氢原子能级', desc: 'I–U 曲线与遏止电压、E_k–ν 图像、一群原子跃迁几种光、光子与电子激发', icon: '⚛' },
   'nucleus': { name: '原子核衰变与半衰期', desc: '半衰期的统计规律、磁场中衰变径迹内切外切、α β 衰变次数', icon: '☢' },
@@ -67,7 +68,7 @@ window.CURRICULUM = [
   {
     id: 'b1', name: '必修第一册', chapters: [
       {
-        id: 'b1c1', num: '第一章', title: '运动的描述', domain: 'mech', fig: 'displacement',
+        id: 'b1c1', num: '第一章', title: '运动的描述', domain: 'mech', fig: 'displacement', labs: ['chase'],
         sections: [
           ['质点 参考系', '物体的大小和形状对所研究的问题影响可以忽略时，可看作质点；描述运动要先选定参考系。'],
           ['时间 位移', '时刻对应位置，时间间隔对应过程。位移是从初位置指向末位置的有向线段，路程是轨迹的长度。', 'Δx = x₂ − x₁'],
@@ -343,7 +344,7 @@ window.CURRICULUM = [
   {
     id: 'b6', name: '选择性必修第三册', chapters: [
       {
-        id: 'b6c1', num: '第一章', title: '分子动理论', domain: 'heat', fig: 'ep_r',
+        id: 'b6c1', num: '第一章', title: '分子动理论', domain: 'heat', fig: 'ep_r', labs: ['molecular'],
         sections: [
           ['分子动理论的基本内容', '物质由大量分子组成；分子永不停息地做无规则运动（扩散、布朗运动）；分子间同时存在引力和斥力。'],
           ['实验：用油膜法估测油酸分子的大小', '把油膜看成单分子层，分子直径等于油酸体积除以油膜面积。', 'd = V / S'],

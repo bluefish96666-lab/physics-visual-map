@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>分子力、分子势能与油膜法 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>分子力、分子势能与油膜法</b><span class="crumb">选择性必修第三册 · 第一章 分子动理论</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">分子间<b>同时</b>存在引力和斥力，都随距离增大而减小，<b>斥力减小得更快</b>。r = r₀ 时合力为零、分子势能最小；温度是分子平均动能的标志。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="force" checked>分子力与分子势能</label>
+      <label class="chk"><input type="radio" name="mode" value="speed">速率分布</label>
+      <label class="chk"><input type="radio" name="mode" value="oil">油膜法估测分子大小</label>
+    </div>
+
+    <div id="forcePanel">
+      <div class="row">乙分子释放位置 r <input type="range" id="rs" min="0.9" max="3" step="0.05" value="2.5"><span class="val" id="rsv"></span></div>
+      <div class="n" style="font-size:12px;color:#6b7280">甲分子固定在 O 点；也可以直接拖动乙分子。距离以 r₀ 为单位。</div>
+    </div>
+
+    <div id="speedPanel">
+      <div class="row">温度 t₂ <input type="range" id="t2" min="-100" max="400" step="10" value="100"><span class="val" id="t2v"></span></div>
+      <div class="n" style="font-size:12px;color:#6b7280">氧气分子；灰色为 0 °C 时的分布（对照）。</div>
+    </div>
+
+    <div id="oilPanel">
+      <div class="row">油酸浓度（每 1000 mL 溶液含油酸） <input type="range" id="conc" min="0.5" max="2" step="0.1" value="1"><span class="val" id="concv"></span></div>
+      <div class="row">1 mL 溶液的滴数 <input type="range" id="drops" min="50" max="100" step="5" value="80"><span class="val" id="dropsv"></span></div>
+      <h2>常见操作失误</h2>
+      <div class="row"><label class="chk"><input type="checkbox" id="e_powder">痱子粉撒得太厚，油膜没有充分展开</label></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="e_pure">计算时把 1 滴溶液的体积当成油酸体积</label></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="e_all">数格子时不足半格的也算一格</label></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="e_drops">数滴数时少数了 10 滴</label></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <div id="playBox">
+      <h2>播放</h2>
+      <div class="row"><button class="primary" id="play" style="flex:1">▶ 释放乙分子</button><button id="slow">慢放 0.25×</button></div>
+    </div>
+
+    <h2>当前数据</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const st = { mode: 'force', rs: 2.5, r: 2.5, v: 0, t2: 100, conc: 1, drops: 80, e_powder: false, e_pure: false, e_all: false, e_drops: false, speed: 1 };
+
+// ---------- 分子力（Lennard-Jones，r 以 r₀ 为单位，ε = 1）----------
+const Frep = r => 12 * Math.pow(r, -13), Fatt = r => 12 * Math.pow(r, -7);
+const Fnet = r => Frep(r) - Fatt(r);
+const Ep = r => Math.pow(r, -12) - 2 * Math.pow(r, -6);
+let running = false;
+function stepForce(dt) {
+  const n = 40, h = dt / n;
+  for (let i = 0; i < n; i++) {
+    const a = Fnet(st.r);
+    st.v += a * h; st.r += st.v * h;
+  }
+}
+
+// ---------- 速率分布（氧气）----------
+const KB = 1.380649e-23, MO2 = 32 * 1.6605e-27;
+const sig = T => Math.sqrt(KB * T / MO2);
+function erf(x) { const s = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return s * y; }
+const cdf = (v, T) => { const x = v / (Math.SQRT2 * sig(T)); return erf(x) - 2 / Math.sqrt(Math.PI) * x * Math.exp(-x * x); };
+const pdf = (v, T) => { const s = sig(T); return Math.sqrt(2 / Math.PI) * v * v / (s * s * s) * Math.exp(-v * v / (2 * s * s)); };
+const BINS = Array.from({ length: 10 }, (_, i) => [i * 100, i === 9 ? Infinity : (i + 1) * 100]);
+const binPct = T => BINS.map(([a, b]) => ((b === Infinity ? 1 : cdf(b, T)) - cdf(a, T)) * 100);
+let gas = [];
+function gauss() { let u = 0, v = 0; while (!u) u = Math.random(); v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+function makeGas() {
+  const T = st.t2 + 273.15, s = sig(T);
+  gas = Array.from({ length: 140 }, () => { const sp = Math.hypot(gauss(), gauss(), gauss()) * s, a = Math.random() * Math.PI * 2; return { x: Math.random(), y: Math.random(), sp, a }; });
+  gasT = T;
+}
+let gasT = 373;
+function rescaleGas() { const T = st.t2 + 273.15, f = Math.sqrt(T / gasT); gas.forEach(p => { p.sp *= f; }); gasT = T; }
+
+// ---------- 油膜法 ----------
+const D_TRUE = 1.1e-9, CELL = 1;
+function oil() {
+  const Vdrop = 1e-6 / st.drops * st.conc / 1000;
+  let Sreal = Vdrop / D_TRUE * 1e4;
+  if (st.e_powder) Sreal *= 0.62;
+  const R = Math.sqrt(Sreal / Math.PI);
+  const shape = th => 1 + 0.16 * Math.sin(3 * th + 0.7) + 0.09 * Math.sin(5 * th + 2.1) + 0.05 * Math.sin(8 * th);
+  let norm = 0; for (let i = 0; i < 720; i++) norm += shape(i / 720 * Math.PI * 2) ** 2; norm /= 720;
+  const Rs = R / Math.sqrt(norm);
+  const inside = (x, y) => { const r = Math.hypot(x, y), th = Math.atan2(y, x); return r <= Rs * shape(th); };
+  const half = Math.ceil(Rs * 1.4) + 1, cells = [];
+  let full = 0, part = 0;
+  for (let i = -half; i < half; i++) for (let j = -half; j < half; j++) {
+    let k = 0; for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) if (inside(i + (a + 0.5) / 5, j + (b + 0.5) / 5)) k++;
+    if (k === 0) continue;
+    const f = k / 25; cells.push({ i, j, f });
+    if (f >= 0.5) full++; else part++;
+  }
+  const Scount = st.e_all ? full + part : full;
+  const dropsUsed = st.e_drops ? st.drops - 10 : st.drops;
+  const Vused = st.e_pure ? 1e-6 / dropsUsed : 1e-6 / dropsUsed * st.conc / 1000;
+  const d = Vused / (Scount * 1e-4);
+  return { Vdrop, Sreal, Rs, shape, cells, full, part, Scount, Vused, d, half };
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let forceMap = null;
+
+function drawForce(c, W, H) {
+  const y = H * 0.42, x0 = 90, k = (W - 160) / 3.2, X = r => x0 + r * k;
+  forceMap = { X, x0, k, y };
+  line(c, x0 - 30, y, W - 30, y, '#e5e7eb', 1);
+  for (let r = 0; r <= 3; r += 0.5) { line(c, X(r), y + 40, X(r), y + 46, '#9ca3af'); text(c, `${r} r₀`, X(r), y + 58, '#6b7280', { size: 11 }); }
+  line(c, X(1), y - 110, X(1), y + 40, '#a855f7', 1, [4, 4]); text(c, 'r₀（平衡位置）', X(1), y - 122, '#7e22ce', { bold: true, size: 12 });
+  const rad = Math.min(26, k * 0.32);
+  dot(c, X(0), y, rad, '#cbd5e1', '#334155'); text(c, '甲', X(0), y, '#111827', { bold: true, size: 14 });
+  dot(c, X(st.r), y, rad, '#fdba74', '#c2410c'); text(c, '乙', X(st.r), y, '#7c2d12', { bold: true, size: 14 });
+  const sc = 40 / 2.7;
+  const fa = Fatt(st.r), fr = Frep(st.r), fn = Fnet(st.r), cap = v => Math.sign(v) * Math.min(Math.abs(v) * sc, 150);
+  if (Math.abs(cap(fr)) > 2) vec(c, X(st.r), y - 34, X(st.r) + cap(fr), y - 34, '#2563eb', 2.2, 8);
+  text(c, '斥力', X(st.r) + cap(fr) + 18, y - 34, '#2563eb', { size: 12, bold: true });
+  if (Math.abs(cap(fa)) > 2) vec(c, X(st.r), y - 54, X(st.r) - Math.abs(cap(fa)), y - 54, '#16a34a', 2.2, 8);
+  text(c, '引力', X(st.r) - Math.abs(cap(fa)) - 18, y - 54, '#16a34a', { size: 12, bold: true });
+  if (Math.abs(cap(fn)) > 2) vec(c, X(st.r), y + 30, X(st.r) + cap(fn), y + 30, '#dc2626', 3, 10);
+  text(c, `合力（${Math.abs(fn) < 0.05 ? '≈0' : fn > 0 ? '表现为斥力' : '表现为引力'}）`, X(st.r), y + 82, '#dc2626', { size: 13, bold: true });
+  if (running || Math.abs(st.v) > 1e-6) { vec(c, X(st.r), y - 90, X(st.r) + st.v * 40, y - 90, '#111827', 2, 8); text(c, 'v', X(st.r) + st.v * 40 + Math.sign(st.v || 1) * 12, y - 90, '#111827', { bold: true, size: 13 }); }
+  const Ek = Ep(st.rs) - Ep(st.r);
+  const bx = W - 170, by = H - 30, bh = H * 0.2, E0 = 1;
+  [['E_k', Ek, '#16a34a'], ['E_p', Ep(st.r), '#2563eb']].forEach(([n, v, col], i) => {
+    const x = bx + i * 60, h = v / E0 * bh;
+    c.fillStyle = col; c.fillRect(x, by - bh - Math.max(0, h), 36, Math.abs(h));
+    text(c, `${n} ${fmt(v, 3)}`, x + 18, by - bh + 22 + (h < 0 ? Math.abs(h) : 0), col, { bold: true, size: 11 });
+  });
+  line(c, bx - 10, by - bh, bx + 110, by - bh, '#374151', 1);
+  text(c, '0（无穷远 E_p = 0）', bx + 50, by - bh - 12 - Math.max(0, Ek * bh), '#6b7280', { size: 11 });
+  text(c, `r = ${fmt(st.r, 3)} r₀`, 14, 20, '#111827', { bold: true, size: 15, align: 'left' });
+}
+
+function drawSpeed(c, W, H, dt = 0) {
+  const bx = 30, by = 60, bw = Math.min(W * 0.55, H - 100), bh = bw;
+  c.strokeStyle = '#334155'; c.lineWidth = 2; c.strokeRect(bx, by, bw, bh);
+  const vmax = 900;
+  for (const p of gas) {
+    const s = p.sp / 2500;
+    p.x += Math.cos(p.a) * s * dt * 4; p.y += Math.sin(p.a) * s * dt * 4;
+    if (p.x < 0 || p.x > 1) { p.a = Math.PI - p.a; p.x = Math.max(0, Math.min(1, p.x)); }
+    if (p.y < 0 || p.y > 1) { p.a = -p.a; p.y = Math.max(0, Math.min(1, p.y)); }
+    const f = Math.min(1, p.sp / vmax);
+    dot(c, bx + p.x * bw, by + p.y * bh, 4, `rgb(${Math.round(37 + 183 * f)},${Math.round(99 - 60 * f)},${Math.round(235 - 197 * f)})`);
+  }
+  const T = st.t2 + 273.15, vp = Math.SQRT2 * sig(T), vavg = Math.sqrt(8 / Math.PI) * sig(T);
+  text(c, `t = ${st.t2} °C（T = ${fmt(T, 0)} K）`, 14, 20, '#111827', { bold: true, size: 15, align: 'left' });
+  text(c, `最概然速率 ≈ ${fmt(vp, 0)} m/s，平均速率 ≈ ${fmt(vavg, 0)} m/s`, 14, 44, '#374151', { bold: true, size: 13, align: 'left' });
+  const lx = bx + bw + 30;
+  text(c, '颜色：蓝 = 慢，红 = 快', lx, by + 10, '#374151', { size: 13, align: 'left' });
+  text(c, '每个分子的速率时刻在变，', lx, by + 40, '#6b7280', { size: 12, align: 'left' });
+  text(c, '但大量分子的速率分布是确定的：', lx, by + 58, '#6b7280', { size: 12, align: 'left' });
+  text(c, '"中间多、两头少"', lx, by + 82, '#b45309', { bold: true, size: 14, align: 'left' });
+}
+
+function drawOil(c, W, H) {
+  const o = oil(), cs = Math.max(5, Math.min(16, (H - 90) / (2 * o.half), (W * 0.62) / (2 * o.half)));
+  const cx = 30 + o.half * cs, cy = 64 + o.half * cs;
+  c.fillStyle = '#eff6ff'; c.fillRect(cx - o.half * cs, cy - o.half * cs, 2 * o.half * cs, 2 * o.half * cs);
+  for (const q of o.cells) {
+    const counted = q.f >= 0.5 || st.e_all;
+    c.fillStyle = counted ? (q.f >= 0.5 ? 'rgba(234,88,12,0.28)' : 'rgba(220,38,38,0.3)') : 'rgba(156,163,175,0.18)';
+    c.fillRect(cx + q.i * cs, cy + q.j * cs, cs, cs);
+  }
+  c.beginPath();
+  for (let i = 0; i <= 360; i++) { const th = i / 360 * Math.PI * 2, r = o.Rs * o.shape(th) * cs; const x = cx + r * Math.cos(th), y = cy + r * Math.sin(th); i ? c.lineTo(x, y) : c.moveTo(x, y); }
+  c.closePath(); c.fillStyle = 'rgba(250,204,21,0.35)'; c.fill(); c.strokeStyle = '#ca8a04'; c.lineWidth = 2; c.stroke();
+  c.strokeStyle = '#cbd5e1'; c.lineWidth = 0.6;
+  for (let i = -o.half; i <= o.half; i++) { line(c, cx + i * cs, cy - o.half * cs, cx + i * cs, cy + o.half * cs, '#cbd5e1', 0.6); line(c, cx - o.half * cs, cy + i * cs, cx + o.half * cs, cy + i * cs, '#cbd5e1', 0.6); }
+  text(c, `每小格 1 cm × 1 cm；数得 ${o.Scount} 格 → S = ${o.Scount} cm²`, 14, 20, '#111827', { bold: true, size: 14, align: 'left' });
+  text(c, `估测分子直径 d = V/S = ${fmt(o.d * 1e10, 2)}×10⁻¹⁰ m`, 14, 44, '#c2410c', { bold: true, size: 14, align: 'left' });
+  const lx = cx + o.half * cs + 24;
+  [['rgba(234,88,12,0.5)', '超过半格：算一格'], ['rgba(220,38,38,0.5)', '不足半格却算了'], ['rgba(156,163,175,0.4)', '不足半格：舍去']].forEach(([col, s], i) => {
+    if (i === 1 && !st.e_all) return;
+    c.fillStyle = col; c.fillRect(lx, 70 + i * 26, 16, 16); text(c, s, lx + 22, 78 + i * 26, '#374151', { size: 12, align: 'left' });
+  });
+  text(c, '单分子油膜：厚度 = 分子直径', lx, 160, '#7c3aed', { bold: true, size: 13, align: 'left' });
+}
+
+function draw(dt = 0) {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  if (st.mode === 'force') drawForce(c, W, H); else if (st.mode === 'speed') drawSpeed(c, W, H, dt); else drawOil(c, W, H);
+}
+Lab.draggable($('cv'), {
+  pick(px, py, rad) { if (st.mode !== 'force' || !forceMap) return null; return Math.hypot(px - forceMap.X(st.r), py - forceMap.y) < rad + 20 ? 'b' : null; },
+  move(_, px) { stopRun(); st.r = st.rs = Math.max(0.9, Math.min(3, (px - forceMap.x0) / forceMap.k)); st.v = 0; Lab.setRange('rs', Math.round(st.rs * 20) / 20); render(); },
+});
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2;
+  chartView.begin();
+  if (st.mode === 'force') {
+    const rs = Array.from({ length: 300 }, (_, j) => 0.88 + 2.2 * j / 299);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0.8, xmax: 3.1, ymin: -4, ymax: 4, xlabel: 'r / r₀', ylabel: 'F（斥力为正）', legendX: 120,
+      series: [{ pts: rs.map(r => [r, Frep(r)]), color: '#2563eb', dash: [5, 4], label: '斥力' }, { pts: rs.map(r => [r, -Fatt(r)]), color: '#16a34a', dash: [5, 4], label: '引力' }, { pts: rs.map(r => [r, Fnet(r)]), color: '#dc2626', label: '合力' }],
+      vlines: [{ x: 1, color: '#a855f7', label: 'r₀' }],
+      points: [{ x: st.r, y: Math.max(-4, Math.min(4, Fnet(st.r))), color: '#dc2626' }, { x: Math.pow(13 / 7, 1 / 6), y: Fnet(Math.pow(13 / 7, 1 / 6)), color: '#16a34a', r: 4, label: '引力最大' }],
+    });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0.8, xmax: 3.1, ymin: -1.3, ymax: 1.5, xlabel: 'r / r₀', ylabel: 'E_p（无穷远处为 0）', legendX: 140,
+      series: [{ pts: rs.map(r => [r, Ep(r)]), color: '#2563eb', label: 'E_p' }],
+      hlines: [{ y: Ep(st.rs), color: '#9ca3af', label: '总能量（释放时的 E_p）' }],
+      vlines: [{ x: 1, color: '#a855f7', label: 'r₀：E_p 最小' }],
+      points: [{ x: st.r, y: Ep(st.r), color: '#2563eb' }],
+    });
+  } else if (st.mode === 'speed') {
+    const T = st.t2 + 273.15, a = binPct(273.15), b = binPct(T);
+    const top = Math.max(...a, ...b) * 1.2;
+    const m = Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 10, ymin: 0, ymax: top, xlabel: '', ylabel: '占总分子数的百分比 %', legendX: 400, xticks: 10,
+      xfmt: v => v === 10 ? '' : `${v}`,
+    });
+    BINS.forEach((_, i) => {
+      const w = (m.X(1) - m.X(0)) * 0.36;
+      c.fillStyle = '#cbd5e1'; c.fillRect(m.X(i + 0.5) - w, m.Y(a[i]), w, m.y0 - m.Y(a[i]));
+      c.fillStyle = '#f97316'; c.fillRect(m.X(i + 0.5), m.Y(b[i]), w, m.y0 - m.Y(b[i]));
+    });
+    text(c, '灰：0 °C　橙：' + st.t2 + ' °C', m.x1, m.y1 + 6, '#374151', { size: 11, align: 'right' });
+    text(c, '横轴：速率区间 ×100 m/s（最后一格为 900 以上）', m.x1, m.y1 + 22, '#6b7280', { size: 11, align: 'right' });
+    const vs = Array.from({ length: 300 }, (_, j) => 1200 * j / 299);
+    const pk = Math.max(pdf(Math.SQRT2 * sig(Math.min(T, 273.15)), Math.min(T, 273.15)), pdf(Math.SQRT2 * sig(T), T));
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 1200, ymin: 0, ymax: pk * 1e3 * 1.2, xlabel: 'v / (m/s)', ylabel: '分布函数 f(v)', legendX: 150,
+      series: [{ pts: vs.map(v => [v, pdf(v, 273.15) * 1e3]), color: '#9ca3af', dash: [5, 4], label: '0 °C' }, { pts: vs.map(v => [v, pdf(v, T) * 1e3]), color: '#f97316', label: `${st.t2} °C` }],
+      vlines: [{ x: Math.SQRT2 * sig(T), color: '#f97316', label: '峰值' }],
+    });
+  } else {
+    const o = oil(), base = { ...st };
+    const cases = [['正确', {}], ['粉太厚', { e_powder: true }], ['没乘浓度', { e_pure: true }], ['半格也算', { e_all: true }], ['滴数少数', { e_drops: true }]];
+    const ds = cases.map(([n, ch]) => { Object.assign(st, { e_powder: false, e_pure: false, e_all: false, e_drops: false }, ch); const d = oil().d; return [n, d]; });
+    Object.assign(st, base);
+    const dTrue = ds[0][1], cap = dTrue * 3;
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 6, ymin: 0, ymax: cap * 1.2e10, xlabel: '', ylabel: 'd 的测量值 / 10⁻¹⁰ m', legendX: 400, xticks: 6, xfmt: v => (cases[Math.round(v) - 1] || [''])[0],
+      series: ds.map(([n, d], i) => ({ pts: [[i + 1, 0], [i + 1, Math.min(d, cap) * 1e10]], color: i === 0 ? '#16a34a' : d > dTrue * 1.02 ? '#dc2626' : '#2563eb', width: 16 })),
+      points: ds.map(([n, d], i) => ({ x: i + 1, y: Math.min(d, cap) * 1e10, color: '#374151', r: 2, label: d > cap ? `${fmt(d / dTrue, 0)} 倍` : fmt(d * 1e10, 1) })),
+      hlines: [{ y: dTrue * 1e10, color: '#16a34a' }],
+    });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 3, ymin: 0, ymax: Math.max(o.full + o.part, o.Sreal) * 1.25, xlabel: '', ylabel: '面积 / cm²', legendX: 400, xticks: 3,
+      xfmt: v => ['', '油膜实际面积', '数格子得到'][Math.round(v)] || '',
+      series: [{ pts: [[1, 0], [1, o.Sreal]], color: '#ca8a04', width: 40 }, { pts: [[2, 0], [2, o.Scount]], color: '#ea580c', width: 40 }],
+      points: [{ x: 1, y: o.Sreal, color: '#374151', r: 2, label: fmt(o.Sreal, 1) }, { x: 2, y: o.Scount, color: '#374151', r: 2, label: `${o.Scount}` }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  force: [
+    'r = r₀ 时引力与斥力大小相等，合力为零；r < r₀ 合力表现为斥力，r > r₀ 表现为引力。',
+    '引力和斥力都随 r 增大而减小，斥力变化得更快；合力表现为引力时，随 r 增大先增大后减小。',
+    '分子力做正功，分子势能减小；r = r₀ 时分子势能最小（但不为零，是负值）。',
+    '乙从远处由静止释放靠近甲：到 r₀ 前一直加速，在 r₀ 处速度最大、动能最大、势能最小。',
+    'r > 10r₀（约 10⁻⁹ m）时分子力可以忽略。',
+  ],
+  speed: [
+    '大量分子的速率分布呈"中间多、两头少"，个别分子的速率无法预测。',
+    '温度升高，速率大的分子所占比例增大，曲线峰值向速率大的方向移动，峰值变低。',
+    '每条曲线与横轴围成的面积都等于 1（100%），所以两条曲线面积相同。',
+    '温度是分子平均动能的标志，但不是每个分子的动能都随温度升高而增大。',
+  ],
+  oil: [
+    '原理：油酸在水面形成单分子油膜，分子直径 d = V/S，V 是 1 滴溶液中纯油酸的体积。',
+    'V = (1 mL / 滴数) × 浓度；S 用数格子估算：超过半格算一格，不足半格舍去。',
+    '误差分析抓住 d = V/S：V 算大了或 S 算小了 → d 偏大；反之 d 偏小。',
+    '痱子粉撒太厚使油膜不能充分展开，S 偏小，d 偏大。',
+  ],
+};
+function updatePanel() {
+  ['force', 'speed', 'oil'].forEach(m => { $(m + 'Panel').style.display = st.mode === m ? '' : 'none'; });
+  $('playBox').style.display = st.mode === 'force' ? '' : 'none';
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  let rows = '', html = '';
+  if (st.mode === 'force') {
+    $('hint').textContent = '拖动乙分子改变距离；点"释放"看它在分子力作用下的运动';
+    const fn = Fnet(st.r), Ek = Ep(st.rs) - Ep(st.r);
+    let rmin = 1; { let lo = 0.85, hi = 1; for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (Ep(m) > Ep(st.rs)) lo = m; else hi = m; } rmin = hi; }
+    rows = `<tr><td>距离 r</td><td>${fmt(st.r, 3)} r₀</td></tr><tr><td>合力</td><td>${fmt(Math.abs(fn), 3)}（${Math.abs(fn) < 0.005 ? '为零' : fn > 0 ? '斥力' : '引力'}）</td></tr>
+      <tr><td>分子势能 E_p</td><td>${fmt(Ep(st.r), 3)}</td></tr><tr><td>动能 E_k</td><td>${fmt(Ek, 3)}</td></tr>`;
+    html = `<div class="node">乙从 <span class="v">r = ${fmt(st.rs, 2)} r₀</span> 由静止释放${st.rs > 1 ? '' : '（在 r₀ 以内，斥力推开）'}</div>`;
+    if (st.rs < 1) html += `<div class="link">↓ r < r₀：合力为斥力，乙向外加速</div>
+      <div class="node">斥力做正功，E_p 减小、E_k 增大；到 <span class="v">r₀ 处速度最大</span>，之后引力使它减速，在 E_p 回到 ${fmt(Ep(st.rs), 3)} 的位置停下再返回。</div>`;
+    if (st.rs > 1) html += `<div class="link">↓ r > r₀：合力为引力，与运动方向相同</div>
+      <div class="node">分子力做<span class="v">正功</span> → E_k 增大，E_p 减小<br><span class="n">合力大小先增大（r ≈ 1.11 r₀ 时引力最大）后减小，加速度也先增大后减小。</span></div>
+      <div class="link">↓ r = r₀</div>
+      <div class="node"><span class="v">合力为零，速度最大，E_p 最小 = ${fmt(Ep(1), 2)}</span>（以无穷远为零，最小势能是负值）</div>
+      <div class="link">↓ r < r₀：合力为斥力，做负功</div>
+      <div class="node">E_k 减小、E_p 增大，到 <span class="v">r = ${fmt(rmin, 3)} r₀</span> 时速度为零（E_p 回到 ${fmt(Ep(st.rs), 3)}），然后被推回</div>`;
+  } else if (st.mode === 'speed') {
+    const T = st.t2 + 273.15, a = binPct(273.15), b = binPct(T);
+    $('hint').textContent = '拖动温度，看速率分布怎么变化';
+    rows = `<tr><td><b>区间 m/s</b></td><td style="text-align:right"><b>0 °C</b></td><td><b>${st.t2} °C</b></td></tr>` + BINS.map(([lo, hi], i) => `<tr><td>${hi === Infinity ? '900 以上' : `${lo}～${hi}`}</td><td style="text-align:right">${fmt(a[i], 1)}%</td><td>${fmt(b[i], 1)}%</td></tr>`).join('');
+    const fastA = a.slice(6).reduce((x, y) => x + y, 0), fastB = b.slice(6).reduce((x, y) => x + y, 0);
+    html = `<div class="node">0 °C 时峰值在 <span class="v">${Math.floor(Math.SQRT2 * sig(273.15) / 100) * 100}～${Math.floor(Math.SQRT2 * sig(273.15) / 100) * 100 + 100} m/s</span>；${st.t2} °C 时在 <span class="v">${Math.floor(Math.SQRT2 * sig(T) / 100) * 100}～${Math.floor(Math.SQRT2 * sig(T) / 100) * 100 + 100} m/s</span></div>
+      <div class="link">↓ 速率大于 600 m/s 的分子</div>
+      <div class="node">0 °C：<span class="v">${fmt(fastA, 1)}%</span>；${st.t2} °C：<span class="v">${fmt(fastB, 1)}%</span><br><span class="n">${T > 273.15 ? '温度升高，速率大的分子比例增大。' : T < 273.15 ? '温度降低，速率大的分子比例减小。' : '同一温度，分布相同。'}</span></div>
+      <div class="link">↓ 面积</div>
+      <div class="node">两组百分比之和都是 <span class="v">100%</span>：曲线下的面积相等，所以峰值右移时一定变低、左移时一定变高。</div>`;
+  } else {
+    const o = oil(), dropsUsed = st.e_drops ? st.drops - 10 : st.drops;
+    $('hint').textContent = '黄色是油膜，橙色格子计入面积；勾选失误看 d 怎么变';
+    rows = `<tr><td>1 滴溶液中油酸体积 V</td><td>${(o.Vdrop * 1e6).toExponential(2)} mL = ${fmt(o.Vdrop * 1e12, 2)}×10⁻¹² m³</td></tr>
+      <tr><td>数得格数（满半格 / 不足半格）</td><td>${o.full} / ${o.part}</td></tr><tr><td>计算用的 S</td><td>${o.Scount} cm²</td></tr><tr><td>测得 d</td><td>${fmt(o.d * 1e10, 2)}×10⁻¹⁰ m</td></tr>`;
+    html = `<div class="node"><span class="f">V = (1 mL / ${dropsUsed}) × ${st.e_pure ? '1（误：没乘浓度）' : `${fmt(st.conc, 1)}/1000`}</span> = <span class="v">${(o.Vused * 1e6).toExponential(2)} mL</span>${st.e_drops ? '<br><span class="n">滴数少数 → 每滴体积算大了。</span>' : ''}</div>
+      <div class="link">↓ 数格子</div>
+      <div class="node"><span class="f">S = ${o.Scount} × 1 cm²</span> = <span class="v">${fmt(o.Scount * 1e-4, 4)} m²</span>${st.e_all ? '<br><span class="n">不足半格也算 → S 偏大。</span>' : ''}${st.e_powder ? '<br><span class="n">油膜没展开 → S 偏小。</span>' : ''}</div>
+      <div class="link">↓ 单分子油膜</div>
+      <div class="node"><span class="f">d = V/S</span> = <span class="v">${fmt(o.d * 1e10, 2)}×10⁻¹⁰ m</span>（真实值约 ${fmt(D_TRUE * 1e10, 0)}×10⁻¹⁰ m，${o.d > D_TRUE * 1.15 ? '偏大' : o.d < D_TRUE * 0.85 ? '偏小' : '基本准确'}）</div>`;
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+let chartAcc = 0;
+const anim = Lab.loop(dt => {
+  if (st.mode === 'force') {
+    if (!running) return;
+    stepForce(dt * st.speed * 0.6);
+    chartAcc += dt; draw();
+    if (chartAcc > 0.08) { chartAcc = 0; drawChart(); updatePanel(); }
+  } else if (st.mode === 'speed') draw(dt);
+});
+function stopRun() { running = false; $('play').textContent = '▶ 释放乙分子'; }
+$('play').addEventListener('click', () => {
+  if (running) { stopRun(); return; }
+  if (Math.abs(st.v) < 1e-9) st.r = st.rs;
+  running = true; $('play').textContent = '⏸ 暂停';
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.25 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+
+const RNG = { rs: v => `${fmt(v, 2)} r₀`, t2: v => `${v} °C`, conc: v => `${fmt(v, 1)} mL`, drops: v => `${v} 滴` };
+Lab.range('rs', RNG.rs, v => { stopRun(); st.rs = st.r = v; st.v = 0; render(); });
+Lab.range('t2', RNG.t2, v => { st.t2 = v; rescaleGas(); render(); });
+Lab.range('conc', RNG.conc, v => { st.conc = v; render(); });
+Lab.range('drops', RNG.drops, v => { st.drops = v; render(); });
+['e_powder', 'e_pure', 'e_all', 'e_drops'].forEach(k => $(k).addEventListener('change', () => { st[k] = $(k).checked; render(); }));
+Lab.radios('mode', m => { st.mode = m; stopRun(); render(); });
+
+const PRESETS = [
+  ['乙从远处释放：r₀ 处速度最大', { mode: 'force', rs: 2.5 }, true],
+  ['r < r₀：表现为斥力', { mode: 'force', rs: 0.95 }, false],
+  ['引力最大的位置', { mode: 'force', rs: 1.11 }, false],
+  ['温度升高：分布右移变矮', { mode: 'speed', t2: 100 }],
+  ['温度降低', { mode: 'speed', t2: -100 }],
+  ['油膜法：正确操作', { mode: 'oil', conc: 1, drops: 80, e_powder: false, e_pure: false, e_all: false, e_drops: false }],
+  ['误差：痱子粉太厚', { mode: 'oil', conc: 1, drops: 80, e_powder: true, e_pure: false, e_all: false, e_drops: false }],
+  ['误差：不足半格也算', { mode: 'oil', conc: 1, drops: 80, e_powder: false, e_pure: false, e_all: true, e_drops: false }],
+];
+PRESETS.forEach(([name, o, go]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    stopRun();
+    Object.assign(st, o);
+    if (o.rs) { st.r = st.rs; st.v = 0; }
+    Lab.setRadio('mode', st.mode);
+    Object.keys(RNG).forEach(k => Lab.setRange(k, st[k]));
+    ['e_powder', 'e_pure', 'e_all', 'e_drops'].forEach(k => { $(k).checked = st[k]; });
+    if (st.mode === 'speed') rescaleGas();
+    render();
+    if (go) { running = true; $('play').textContent = '⏸ 暂停'; }
+  });
+  $('presets').appendChild(btn);
+});
+makeGas();
+render();
+anim.start();
+</script>
+</body>
+</html>

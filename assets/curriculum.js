@@ -48,6 +48,7 @@ window.LABS = {
   'shm': { name: '简谐运动、单摆与共振', desc: 'x–t 图像读 v、a，竖直弹簧振子，单摆周期与测 g，共振曲线', icon: '∽' },
   'wave': { name: '机械波：图像、多解与干涉', desc: '同侧法、波动图像与振动图像、两时刻波形多解、干涉加强点', icon: '〰' },
   'light': { name: '光的折射、全反射与双缝干涉', desc: '半圆砖临界角、平行玻璃砖侧移、三棱镜偏向角、Δx = lλ/d', icon: '◭' },
+  'gas': { name: '气体实验定律与热力学第一定律', desc: '水银柱转动与溢出、汽缸卡口分段加热、p–V 循环判断吸放热', icon: '♨' },
   'collision': { name: '碰撞与动量守恒', desc: '弹性与非弹性碰撞、弹簧连接体、子弹打木块', icon: '⇄' },
   'capacitor': { name: '电容器的动态分析', desc: '拖动极板、插电介质，对比 U 不变和 Q 不变两种情况', icon: '▥' },
   'voltammetry': { name: '伏安法测电阻', desc: '电流表内接、外接的误差对比，试触法选择接法', icon: 'Ⓐ' },
@@ -351,7 +352,7 @@ window.CURRICULUM = [
         phet: ['states-of-matter'],
       },
       {
-        id: 'b6c2', num: '第二章', title: '气体、固体和液体', domain: 'heat', fig: 'pv',
+        id: 'b6c2', num: '第二章', title: '气体、固体和液体', domain: 'heat', fig: 'pv', labs: ['gas'],
         sections: [
           ['温度和温标', '热力学温度与摄氏温度的关系。', 'T = t + 273.15 K'],
           ['气体的等温变化', '玻意耳定律：一定质量的气体温度不变时，压强与体积成反比。', 'pV = C'],
@@ -363,7 +364,7 @@ window.CURRICULUM = [
         phet: ['gas-properties'],
       },
       {
-        id: 'b6c3', num: '第三章', title: '热力学定律', domain: 'heat', fig: 'piston',
+        id: 'b6c3', num: '第三章', title: '热力学定律', domain: 'heat', fig: 'piston', labs: ['gas'],
         sections: [
           ['功、热和内能的改变', '做功和热传递都可以改变物体的内能。'],
           ['热力学第一定律', '外界对系统做功 W 为正，系统吸热 Q 为正。', 'ΔU = Q + W'],

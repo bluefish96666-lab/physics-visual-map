@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>气体实验定律与热力学第一定律 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>气体实验定律与热力学第一定律</b><span class="crumb">选择性必修第三册 · 第二章 气体 / 第三章 热力学定律</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">一定质量的理想气体：<b>pV/T = C</b>。解题三步：<b>① 选研究对象（被封闭的气体）② 写出初、末状态的 p、V、T ③ 判断过程，列方程</b>。压强靠液柱或活塞的受力平衡求。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="tube" checked>玻璃管水银柱</label>
+      <label class="chk"><input type="radio" name="mode" value="piston">汽缸活塞（卡口）</label>
+      <label class="chk"><input type="radio" name="mode" value="cycle">p–V 图像与 ΔU = Q + W</label>
+    </div>
+
+    <div id="tubePanel">
+      <div class="row">
+        <label class="chk"><input type="radio" name="proc" value="rot" checked>缓慢转动玻璃管（等温）</label>
+        <label class="chk"><input type="radio" name="proc" value="heat">转到位后加热</label>
+      </div>
+      <div class="row">水银柱长 h <input type="range" id="h" min="5" max="30" step="1" value="19"><span class="val" id="hv"></span></div>
+      <div class="row">开口向上时气柱 L₁ <input type="range" id="L1" min="10" max="50" step="1" value="36"><span class="val" id="L1v"></span></div>
+      <div class="row">玻璃管全长 <input type="range" id="Lt" min="40" max="120" step="1" value="100"><span class="val" id="Ltv"></span></div>
+      <div class="row">转到 θ（与竖直向上夹角） <input type="range" id="thMax" min="0" max="180" step="5" value="90"><span class="val" id="thMaxv"></span></div>
+      <div class="row">温度 T <input type="range" id="T" min="250" max="450" step="5" value="300"><span class="val" id="Tv"></span></div>
+    </div>
+
+    <div id="pistonPanel">
+      <div class="row">活塞质量 m <input type="range" id="pm" min="0" max="50" step="1" value="10"><span class="val" id="pmv"></span></div>
+      <div class="row">初始气柱高 h₁ <input type="range" id="hi" min="10" max="40" step="1" value="20"><span class="val" id="hiv"></span></div>
+      <div class="row">上卡口处气柱高 <input type="range" id="hu" min="20" max="60" step="1" value="30"><span class="val" id="huv"></span></div>
+      <div class="row">加热到 T₂ <input type="range" id="Tmax" min="300" max="900" step="10" value="600"><span class="val" id="Tmaxv"></span></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="onStop">开始时活塞搁在下卡口上，气压 = p₀</label></div>
+      <div class="n" style="font-size:12px;color:#6b7280">p₀ = 1.0×10⁵ Pa，活塞面积 S = 50 cm²，g = 10 m/s²，初温 T₁ = 300 K，气体按单原子理想气体 U = 3/2·pV 计算内能</div>
+    </div>
+
+    <div id="cyclePanel">
+      <div class="n" style="font-size:13px;color:#374151">在上方 p–V 图中<b>拖动 A、B、C 三个状态点</b>，下面同步画出 p–T 和 V–T 图像。规定 T_A = 300 K。</div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="slow">慢放 0.25×</button></div>
+    <div class="row">进程 <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2>当前状态</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const DEG = Math.PI / 180, P0 = 76, PA = 1.0e5, S = 5e-3, G0 = 10, T1 = 300;
+const st = {
+  mode: 'tube', proc: 'rot', h: 19, L1: 36, Lt: 100, thMax: 90, T: 300,
+  pm: 10, hi: 20, hu: 30, Tmax: 600, onStop: false,
+  A: [1, 1], B: [1, 3], C: [3, 1],
+  u: 0, speed: 1,
+};
+
+// ---------- 玻璃管水银柱（压强单位 cmHg，长度 cm）----------
+const LtE = () => Math.max(st.Lt, st.L1 + st.h + 1);
+const Kt = T => (P0 + st.h) * st.L1 * T / T1;
+function xEq(th, T, xa) {
+  const c = Math.cos(th), K = Kt(T), Lt = LtE();
+  if (K / (P0 + xa * c) + xa <= Lt) return xa;
+  const f = x => (P0 + x * c) * (Lt - x) - K;
+  if (f(0) <= 0) return 0;
+  let lo = 0, hi = xa;
+  for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (f(m) > 0) lo = m; else hi = m; }
+  return lo;
+}
+function tubeAt(u) {
+  let x = st.h;
+  const N = 180;
+  if (st.proc === 'rot') {
+    const n = Math.max(1, Math.ceil(u * N));
+    for (let i = 0; i <= n; i++) x = xEq(u * i / n * st.thMax * DEG, st.T, x);
+    const th = u * st.thMax * DEG, T = st.T;
+    return { x, th, T, L: Kt(T) / (P0 + x * Math.cos(th)), p: P0 + x * Math.cos(th) };
+  }
+  for (let i = 0; i <= N; i++) x = xEq(i / N * st.thMax * DEG, T1, x);
+  const th = st.thMax * DEG, n = Math.max(1, Math.ceil(u * N));
+  for (let i = 0; i <= n; i++) x = xEq(th, T1 + u * i / n * (st.T - T1), x);
+  const T = T1 + u * (st.T - T1);
+  return { x, th, T, L: Kt(T) / (P0 + x * Math.cos(th)), p: P0 + x * Math.cos(th) };
+}
+
+// ---------- 汽缸活塞（SI 单位，高度 cm）----------
+const p1 = () => PA + st.pm * G0 / S;
+const huE = () => Math.max(st.hu, st.hi + 1);
+function pistonKeys() {
+  const pi = st.onStop ? PA : p1();
+  const Tb = T1 * p1() / pi, Tc = Tb * huE() / st.hi;
+  return { pi, Tb, Tc };
+}
+function pistonAt(T) {
+  const { pi, Tb, Tc } = pistonKeys();
+  let p, h, phase;
+  if (T <= Tb) { p = pi * T / T1; h = st.hi; phase = T < Tb - 1e-9 ? 'lift' : 'free'; }
+  else if (T <= Tc) { p = p1(); h = st.hi * T / Tb; phase = 'free'; }
+  else { p = p1() * T / Tc; h = huE(); phase = 'top'; }
+  if (T < T1) phase = 'lift';
+  const V = S * h / 100, Vi = S * st.hi / 100;
+  const W = -p1() * (Math.max(0, Math.min(h, huE()) - st.hi) / 100) * S;
+  const dU = 1.5 * (p * V - pi * Vi);
+  return { p, h, V, phase, W, dU, Q: dU - W };
+}
+const pistonT = u => T1 + u * (st.Tmax - T1);
+
+// ---------- p–V 循环（p 单位 10⁵ Pa，V 单位 L，pV 单位 100 J）----------
+const KEYS = ['A', 'B', 'C'];
+const Tof = ([V, p]) => p * V / (st.A[0] * st.A[1]) * T1;
+function segInfo(a, b) {
+  const [V1, p1_] = a, [V2, p2] = b, dV = V2 - V1, dp = p2 - p1_;
+  const Wby = (p1_ + p2) / 2 * dV * 100, dU = 1.5 * (p2 * V2 - p1_ * V1) * 100;
+  let type = '一般过程';
+  if (Math.abs(dV) < 1e-9) type = '等容'; else if (Math.abs(dp) < 1e-9) type = '等压';
+  let peak = null;
+  const qa = dp * dV;
+  if (qa < 0) {
+    const s = -(p1_ * dV + V1 * dp) / (2 * qa);
+    if (s > 0.02 && s < 0.98) peak = { s, V: V1 + s * dV, p: p1_ + s * dp };
+  }
+  return { W: -Wby, Wby, dU, Q: dU + Wby, type, peak };
+}
+function cycleAt(u) {
+  const k = Math.min(2, Math.floor(u * 3)), s = Math.min(1, u * 3 - k);
+  const a = st[KEYS[k]], b = st[KEYS[(k + 1) % 3]];
+  return { V: a[0] + s * (b[0] - a[0]), p: a[1] + s * (b[1] - a[1]), k };
+}
+function shoelace() {
+  let s = 0;
+  for (let i = 0; i < 3; i++) { const a = st[KEYS[i]], b = st[KEYS[(i + 1) % 3]]; s += a[0] * b[1] - b[0] * a[1]; }
+  return s / 2;
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let stageMap = null;
+const mix = (a, b, f) => a.map((v, i) => Math.round(v + (b[i] - v) * f));
+const tempColor = T => { const f = Math.max(0, Math.min(1, (T - 220) / 600)); const c = mix([191, 219, 254], [252, 165, 165], f); return `rgb(${c})`; };
+
+function drawTube(c, W, H) {
+  const s = tubeAt(st.u), Lt = LtE(), k = H * 0.42 / Lt, tw = 22;
+  const P = [W * 0.4, H * 0.5], d = [Math.sin(s.th), -Math.cos(s.th)], n = [Math.cos(s.th), Math.sin(s.th)];
+  const at = (a, off = 0) => [P[0] + d[0] * a * k + n[0] * off, P[1] + d[1] * a * k + n[1] * off];
+  const quad = (a, b, fill) => {
+    const q = [at(a, -tw / 2), at(b, -tw / 2), at(b, tw / 2), at(a, tw / 2)];
+    c.beginPath(); q.forEach((pt, i) => (i ? c.lineTo(...pt) : c.moveTo(...pt))); c.closePath(); c.fillStyle = fill; c.fill();
+  };
+  quad(0, s.L, tempColor(s.T));
+  quad(s.L, s.L + s.x, '#6b7280');
+  line(c, ...at(0, -tw / 2), ...at(Lt, -tw / 2), '#334155', 2.5);
+  line(c, ...at(0, tw / 2), ...at(Lt, tw / 2), '#334155', 2.5);
+  line(c, ...at(0, -tw / 2), ...at(0, tw / 2), '#334155', 4);
+  // 竖直参考与角度
+  line(c, P[0], P[1], P[0], P[1] - 70, '#d1d5db', 1, [4, 4]);
+  if (s.th > 0.01) {
+    c.beginPath(); c.arc(P[0], P[1], 40, -Math.PI / 2, -Math.PI / 2 + s.th); c.strokeStyle = '#7c3aed'; c.lineWidth = 1.5; c.stroke();
+    const mid = -Math.PI / 2 + s.th / 2;
+    text(c, `θ = ${fmt(s.th / DEG, 0)}°`, P[0] + 58 * Math.cos(mid) + 18, P[1] + 58 * Math.sin(mid), '#7c3aed', { bold: true, size: 13 });
+  }
+  dot(c, P[0], P[1], 3, '#334155');
+  const side = s.th > Math.PI / 2 ? -1 : 1, lo = side * (tw / 2 + 34);
+  text(c, `气柱 L = ${fmt(s.L, 2)} cm`, ...at(s.L / 2, -lo), '#1d4ed8', { bold: true, size: 13 });
+  text(c, `水银 ${fmt(s.x, 2)} cm`, ...at(s.L + s.x / 2, -lo), '#374151', { bold: true, size: 13 });
+  text(c, '开口', ...at(Lt, lo), '#6b7280', { size: 12 });
+  // 竖直高度 h·cosθ
+  const cth = Math.cos(s.th);
+  if (Math.abs(cth) > 0.05 && s.x > 0.5) {
+    const a = at(s.L), b = at(s.L + s.x), bx = Math.max(a[0], b[0]) + 70;
+    line(c, a[0], a[1], bx + 6, a[1], '#a855f7', 1, [3, 3]); line(c, b[0], b[1], bx + 6, b[1], '#a855f7', 1, [3, 3]);
+    vec(c, bx, (a[1] + b[1]) / 2, bx, a[1], '#a855f7', 1.5, 7); vec(c, bx, (a[1] + b[1]) / 2, bx, b[1], '#a855f7', 1.5, 7);
+    text(c, `竖直高度 ${fmt(s.x * Math.abs(cth), 2)} cm`, bx + 10, (a[1] + b[1]) / 2, '#7e22ce', { bold: true, size: 12, align: 'left' });
+  }
+  if (s.x < st.h - 0.01) text(c, `溢出水银 ${fmt(st.h - s.x, 2)} cm`, ...at(Lt + 26 / k, 0), '#dc2626', { bold: true, size: 13 });
+  text(c, `p₀ = 76 cmHg   气体压强 p = ${fmt(s.p, 2)} cmHg   T = ${fmt(s.T, 0)} K`, 14, 20, '#111827', { bold: true, size: 14, align: 'left' });
+}
+
+function drawPiston(c, W, H) {
+  const T = pistonT(st.u), s = pistonAt(T), by = H - 34, k = (H - 90) / 68, cw = Math.min(180, W * 0.26), cx = W * 0.3, tp = 18;
+  const wallTop = by - 66 * k, xl = cx - cw / 2, xr = cx + cw / 2;
+  c.fillStyle = tempColor(T); c.fillRect(xl, by - s.h * k, cw, s.h * k);
+  c.fillStyle = '#e5e7eb'; c.fillRect(xl - 10, wallTop, 10, by - wallTop + 10); c.fillRect(xr, wallTop, 10, by - wallTop + 10); c.fillRect(xl - 10, by, cw + 20, 10);
+  // 加热丝
+  const glow = st.u > 0 ? Math.min(1, 0.4 + st.u) : 0.25;
+  c.save(); c.globalAlpha = glow;
+  c.beginPath(); for (let i = 0; i <= 12; i++) { const x = cx - 50 + i * (100 / 12), y = by - 10 + (i % 2 ? -6 : 6); i ? c.lineTo(x, y) : c.moveTo(x, y); }
+  c.strokeStyle = '#dc2626'; c.lineWidth = 2.5; c.stroke(); c.restore();
+  text(c, '电热丝', cx + 60, by - 10, '#b91c1c', { size: 11, align: 'left' });
+  // 卡口
+  const tri = (y, up) => { for (const [x, sg] of [[xl, 1], [xr, -1]]) { c.beginPath(); c.moveTo(x, y); c.lineTo(x + sg * 12, y); c.lineTo(x, y + (up ? -10 : 10)); c.closePath(); c.fillStyle = '#111827'; c.fill(); } };
+  const yTopStop = by - huE() * k - tp;
+  tri(yTopStop, true);
+  if (st.onStop) tri(by - st.hi * k, false);
+  // 活塞与重物
+  const yb = by - s.h * k;
+  c.fillStyle = '#9ca3af'; c.strokeStyle = '#374151'; c.lineWidth = 1.5; c.fillRect(xl, yb - tp, cw, tp); c.strokeRect(xl, yb - tp, cw, tp);
+  text(c, `活塞 m = ${st.pm} kg`, cx, yb - tp / 2, '#111827', { bold: true, size: 12 });
+  // 受力
+  const sc = 70 / (Math.max(p1(), s.p) * S), fx = xr + 40;
+  const fs = [['p₀S', PA * S, -1, '#2563eb'], ['mg', st.pm * G0, -1, '#111827'], ['pS', s.p * S, 1, '#dc2626']];
+  let N = s.p * S - PA * S - st.pm * G0;
+  if (Math.abs(N) > 0.5) fs.push([N > 0 ? '卡口压力 N' : '卡口支持力 N', Math.abs(N), N > 0 ? -1 : 1, '#7c3aed']);
+  const ym = yb - tp / 2;
+  fs.forEach(([nm, F, dir, col], i) => {
+    const x = fx + i * 46, L = F * sc;
+    if (L < 2) return;
+    if (dir < 0) vec(c, x, ym - L, x, ym, col, 2.4, 8); else vec(c, x, ym + L, x, ym, col, 2.4, 8);
+    text(c, nm, x, dir < 0 ? ym - L - 12 : ym + L + 12, col, { bold: true, size: 12 });
+    text(c, `${fmt(F, 0)} N`, x, dir < 0 ? ym - L - 26 : ym + L + 26, col, { size: 11 });
+  });
+  line(c, fx - 14, ym, fx + fs.length * 46 - 30, ym, '#9ca3af', 1, [3, 3]);
+  const ph = { lift: '等容升压：活塞还压在下卡口上', free: '等压膨胀：活塞缓慢上升', top: '等容升压：活塞被上卡口挡住' }[s.phase];
+  text(c, `T = ${fmt(T, 0)} K   p = ${fmt(s.p / 1e5, 3)}×10⁵ Pa   h = ${fmt(s.h, 2)} cm`, 14, 20, '#111827', { bold: true, size: 14, align: 'left' });
+  text(c, ph, 14, 44, s.phase === 'free' ? '#16a34a' : '#7c3aed', { bold: true, size: 14, align: 'left' });
+}
+
+function drawCycle(c, W, H) {
+  const box = { x: 0, y: 6, w: W, h: H - 6 };
+  const o = { xmin: 0, xmax: 5, ymin: 0, ymax: 4, xlabel: 'V / L', ylabel: 'p / 10⁵ Pa', pad: { l: 56, r: 24, t: 30, b: 60 } };
+  const iso = KEYS.map(key => { const C = st[key][0] * st[key][1]; return { pts: Array.from({ length: 120 }, (_, j) => { const V = 0.15 + 4.85 * j / 119; return [V, C / V]; }).filter(q => q[1] <= 4.3), color: '#d1d5db', dash: [4, 4], width: 1.2 }; });
+  const m = Lab.plot(c, box, { ...o, series: iso });
+  stageMap = { ...m, ...o };
+  const sl = shoelace(), poly = KEYS.map(key => [m.X(st[key][0]), m.Y(st[key][1])]);
+  c.beginPath(); poly.forEach((pt, i) => (i ? c.lineTo(...pt) : c.moveTo(...pt))); c.closePath();
+  c.fillStyle = sl < 0 ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)'; c.fill();
+  KEYS.forEach((key, i) => {
+    const a = poly[i], b = poly[(i + 1) % 3];
+    line(c, ...a, ...b, '#1f2937', 2.4);
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    Lab.head(c, mx + (b[0] - a[0]) / L * 6, my + (b[1] - a[1]) / L * 6, (b[0] - a[0]) / L, (b[1] - a[1]) / L, 11, '#1f2937');
+    const inf = segInfo(st[key], st[KEYS[(i + 1) % 3]]);
+    if (inf.peak) {
+      const px = m.X(inf.peak.V), py = m.Y(inf.peak.p);
+      dot(c, px, py, 5, '#f59e0b', '#92400e');
+      text(c, `最高温 ${fmt(Tof([inf.peak.V, inf.peak.p]), 0)} K`, px + 10, py - 12, '#b45309', { bold: true, size: 12, align: 'left' });
+    }
+  });
+  KEYS.forEach((key, i) => {
+    const [x, y] = poly[i];
+    dot(c, x, y, 8, '#2563eb', '#1e3a8a');
+    text(c, `${key}（${fmt(Tof(st[key]), 0)} K）`, x + 12, y + (y < 60 ? 16 : -14), '#1e3a8a', { bold: true, size: 13, align: 'left' });
+  });
+  const q = cycleAt(st.u);
+  dot(c, m.X(q.V), m.Y(q.p), 6, '#ea580c', '#7c2d12');
+  text(c, sl < 0 ? '顺时针：气体对外做净功，净吸热' : '逆时针：外界对气体做净功，净放热', m.x1 - 6, m.y1 + 10, sl < 0 ? '#15803d' : '#b91c1c', { bold: true, size: 13, align: 'right' });
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  if (st.mode === 'tube') drawTube(c, W, H); else if (st.mode === 'piston') drawPiston(c, W, H); else drawCycle(c, W, H);
+}
+
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    if (st.mode !== 'cycle' || !stageMap) return null;
+    for (const key of KEYS) if (Math.hypot(px - stageMap.X(st[key][0]), py - stageMap.Y(st[key][1])) < rad + 4) return key;
+    return null;
+  },
+  move(key, px, py) {
+    const m = stageMap;
+    const V = m.xmin + (px - m.x0) / (m.x1 - m.x0) * (m.xmax - m.xmin), p = m.ymin + (m.y0 - py) / (m.y0 - m.y1) * (m.ymax - m.ymin);
+    st[key] = [Math.round(Math.max(0.2, Math.min(4.8, V)) * 10) / 10, Math.round(Math.max(0.2, Math.min(3.8, p)) * 10) / 10];
+    render();
+  },
+});
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2;
+  chartView.begin();
+  const N = 120, us = Array.from({ length: N + 1 }, (_, j) => j / N);
+  if (st.mode === 'tube') {
+    const path = us.map(tubeAt), s = tubeAt(st.u), rot = st.proc === 'rot';
+    const xv = q => rot ? q.th / DEG : q.T;
+    const xmin = rot ? 0 : Math.min(T1, st.T), xmax = rot ? Math.max(st.thMax, 10) : Math.max(T1, st.T) + (st.T === T1 ? 10 : 0);
+    const Ls = path.map(q => q.L);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin, xmax, ymin: 0, ymax: LtE() * 1.15, xlabel: rot ? 'θ / °' : 'T / K', ylabel: 'L / cm', legendX: 60,
+      series: [{ pts: path.map(q => [xv(q), q.L]), color: '#2563eb', label: '气柱长度' }, { pts: path.map(q => [xv(q), q.L + q.x]), color: '#6b7280', dash: [5, 4], label: '气柱 + 水银' }],
+      hlines: [{ y: LtE(), color: '#dc2626', label: `管长 ${fmt(LtE(), 0)} cm` }],
+      points: [{ x: xv(s), y: s.L, color: '#2563eb' }],
+    });
+    const Lmax = Math.max(...Ls, st.L1) * 1.3, K0 = Kt(T1), K1 = Kt(st.T);
+    const hyp = K => Array.from({ length: 100 }, (_, j) => { const L = 5 + (Lmax - 5) * j / 99; return [L, K / L]; });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: Lmax, ymin: 0, ymax: 130, xlabel: 'L / cm（V ∝ L）', ylabel: 'p / cmHg', legendX: 100,
+      series: [{ pts: hyp(K0), color: '#9ca3af', dash: [5, 4], label: '300 K 等温线' }].concat(st.T !== T1 ? [{ pts: hyp(K1), color: '#f59e0b', dash: [5, 4], label: `${st.T} K 等温线` }] : [])
+        .concat([{ pts: path.map(q => [q.L, q.p]), color: '#2563eb', width: 3 }]),
+      points: [{ x: st.L1, y: P0 + st.h, color: '#111827', label: '初态' }, { x: s.L, y: s.p, color: '#2563eb', label: '当前' }],
+    });
+  } else if (st.mode === 'piston') {
+    const T = pistonT(st.u), s = pistonAt(T), Ts = us.map(pistonT), path = Ts.map(pistonAt);
+    const VL = q => q.V * 1000, pk = q => q.p / 1e5;
+    const pmax = Math.max(...path.map(pk)) * 1.2, Vmax = S * (huE() + 6) * 10;
+    const m = Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: Vmax, ymin: 0, ymax: pmax, xlabel: 'V / L', ylabel: 'p / 10⁵ Pa', legendX: 110,
+      series: [{ pts: path.map(q => [VL(q), pk(q)]), color: '#d1d5db', width: 2 }, { pts: path.filter((_, j) => Ts[j] <= T).map(q => [VL(q), pk(q)]), color: '#dc2626', width: 3, label: '已经过的过程' }],
+      points: [{ x: VL(s), y: pk(s), color: '#dc2626' }],
+    });
+    const Vi = S * st.hi * 10, Vc = Math.min(VL(s), S * huE() * 10);
+    if (Vc > Vi + 1e-6) {
+      c.fillStyle = 'rgba(37,99,235,0.15)'; c.fillRect(m.X(Vi), m.Y(p1() / 1e5), m.X(Vc) - m.X(Vi), m.y0 - m.Y(p1() / 1e5));
+      text(c, `面积 = 气体对外做功 ${fmt(-s.W, 1)} J`, (m.X(Vi) + m.X(Vc)) / 2, m.y0 - 40, '#1d4ed8', { bold: true, size: 12 });
+    }
+    const { Tb, Tc } = pistonKeys(), TT = Math.max(st.Tmax, 400);
+    const ext = [];
+    if (st.onStop && Tb > T1 + 1e-6) ext.push({ pts: [[0, 0], [Tb, p1() / 1e5]], color: '#a855f7', dash: [4, 4], width: 1.2, label: '等容线过原点' });
+    if (Tc < st.Tmax) ext.push({ pts: [[0, 0], [st.Tmax, p1() / 1e5 * st.Tmax / Tc]], color: '#a855f7', dash: [4, 4], width: 1.2, label: ext.length ? '' : '等容线过原点' });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: TT * 1.05, ymin: 0, ymax: pmax, xlabel: 'T / K', ylabel: 'p / 10⁵ Pa', legendX: 110,
+      series: ext.concat([{ pts: Ts.map((t, j) => [t, pk(path[j])]), color: '#d1d5db', width: 2 }, { pts: Ts.filter(t => t <= T).map(t => [t, pk(pistonAt(t))]), color: '#dc2626', width: 3 }]),
+      vlines: [st.onStop && Tb > T1 + 1 ? { x: Tb, color: '#16a34a', label: `${fmt(Tb, 0)} K` } : null, Tc < st.Tmax ? { x: Tc, color: '#7c3aed', label: `${fmt(Tc, 0)} K` } : null].filter(Boolean),
+      points: [{ x: T, y: pk(s), color: '#dc2626' }],
+    });
+  } else {
+    const seg = KEYS.map((key, i) => { const a = st[key], b = st[KEYS[(i + 1) % 3]]; return Array.from({ length: 61 }, (_, j) => { const f = j / 60, V = a[0] + f * (b[0] - a[0]), p = a[1] + f * (b[1] - a[1]); return { V, p, T: Tof([V, p]) }; }); });
+    const all = seg.flat(), Tm = Math.max(...all.map(q => q.T)) * 1.15, q = cycleAt(st.u), Tq = Tof([q.V, q.p]);
+    const cols = ['#2563eb', '#dc2626', '#16a34a'];
+    const ext = (ax) => KEYS.map((key, i) => {
+      const a = st[key], b = st[KEYS[(i + 1) % 3]], flat = ax === 'p' ? Math.abs(a[0] - b[0]) < 1e-9 : Math.abs(a[1] - b[1]) < 1e-9;
+      if (!flat) return null;
+      const far = Tof(a) > Tof(b) ? a : b;
+      return { pts: [[0, 0], [Tof(far), ax === 'p' ? far[1] : far[0]]], color: '#a855f7', dash: [3, 4], width: 1.1 };
+    }).filter(Boolean);
+    const mk = ax => seg.map((s, i) => ({ pts: s.map(r => [r.T, ax === 'p' ? r.p : r.V]), color: cols[i], label: KEYS[i] + KEYS[(i + 1) % 3] }));
+    const lab = ax => KEYS.map(key => ({ x: Tof(st[key]), y: ax === 'p' ? st[key][1] : st[key][0], color: '#1e3a8a', r: 4, label: key }));
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, { xmin: 0, xmax: Tm, ymin: 0, ymax: 4, xlabel: 'T / K', ylabel: 'p / 10⁵ Pa', legendX: 90, series: ext('p').concat(mk('p')), points: lab('p').concat([{ x: Tq, y: q.p, color: '#ea580c', r: 6 }]) });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, { xmin: 0, xmax: Tm, ymin: 0, ymax: 5, xlabel: 'T / K', ylabel: 'V / L', legendX: 90, series: ext('V').concat(mk('V')), points: lab('V').concat([{ x: Tq, y: q.V, color: '#ea580c', r: 6 }]) });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  tube: [
+    '液柱封闭气体：取液柱为研究对象受力平衡，p = p₀ ± ρgh，h 取液柱的竖直高度。开口向上取 +，向下取 −，倾斜时用 h·cosθ。',
+    '缓慢转动、导热良好 → 等温：p₁L₁ = p₂L₂（横截面积 S 约掉，可以直接用长度代替体积）。',
+    '开口向下时要检查：算出的 L + h 是否超过管长。超过就说明水银溢出，设剩余水银长 x 重新列方程。',
+    '只加热、压强不变（开口向上或水平）→ 等压：L₁/T₁ = L₂/T₂。',
+  ],
+  piston: [
+    '活塞受力平衡求压强：pS = p₀S + mg（活塞自由时）。活塞与卡口接触时多一个卡口的力，压强不再由这个式子决定。',
+    '加热分段：活塞压在下卡口上 → 等容升压到 p₀ + mg/S；之后等压膨胀；碰到上卡口 → 再等容升压。先判断每段的临界温度。',
+    '等压过程气体对外做功 W = pΔV（p–V 图下的面积），等容过程不做功。',
+    '热力学第一定律 ΔU = Q + W：W 是外界对气体做的功，气体膨胀时 W < 0。理想气体内能只由温度决定。',
+  ],
+  cycle: [
+    'p–V 图：过程线与 V 轴围成的面积 = 功的大小；体积增大气体对外做功（W < 0）。',
+    '等温线是双曲线 pV = C，越远离原点温度越高；两点连成的直线上温度可能先升后降。',
+    'p–T 图中等容线、V–T 图中等压线是过原点的直线；斜率越大，体积（压强）越小。',
+    '循环一周 ΔU = 0，Q = −W：p–V 图中顺时针循环气体对外做净功、净吸热；逆时针则相反。',
+    '判断吸放热：先看 T 判断 ΔU，再看 V 判断 W，最后由 Q = ΔU − W 得 Q。',
+  ],
+};
+const sg = (v, unit = 'J') => `${v >= 0 ? '+' : '−'}${fmt(Math.abs(v), 1)} ${unit}`;
+function updatePanel() {
+  ['tube', 'piston', 'cycle'].forEach(m => { $(m + 'Panel').style.display = st.mode === m ? '' : 'none'; });
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  let rows = '', html = '';
+  if (st.mode === 'tube') {
+    const s = tubeAt(st.u), c = Math.cos(s.th), p1t = P0 + st.h, rot = st.proc === 'rot';
+    $('ttv').textContent = rot ? `θ = ${fmt(s.th / DEG, 0)}°` : `T = ${fmt(s.T, 0)} K`;
+    $('hint').textContent = '玻璃管绕封闭端缓慢转动；紫色标注是水银柱的竖直高度';
+    rows = `<tr><td>水银柱竖直高度 h·cosθ</td><td>${fmt(s.x * c, 2)} cm</td></tr><tr><td>气体压强 p</td><td>${fmt(s.p, 2)} cmHg</td></tr>
+      <tr><td>气柱长度 L</td><td>${fmt(s.L, 2)} cm</td></tr><tr><td>剩余水银</td><td>${fmt(s.x, 2)} cm</td></tr>`;
+    html = `<div class="node"><span class="f">初态（开口向上，300 K）：p₁ = p₀ + h</span> = 76 + ${st.h} = <span class="v">${p1t} cmHg</span>，L₁ = ${st.L1} cm</div>
+      <div class="link">↓ 水银柱受力平衡${s.x < st.h - 0.01 ? '（先假设水银不溢出）' : ''}</div>
+      <div class="node"><span class="f">末态：p₂ = p₀ + h·cosθ</span> = 76 ${c >= 0 ? '+' : '−'} ${fmt(st.h * Math.abs(c), 2)} = <span class="v">${fmt(P0 + st.h * c, 2)} cmHg</span><br><span class="n">${Math.abs(c) < 1e-6 ? '水平放置：水银柱不产生压强差，p = p₀。' : c > 0 ? '开口偏上：水银压着气体，p > p₀。' : '开口偏下：水银"挂"在气体下方，p < p₀。'}</span></div>
+      <div class="link">↓ ${s.T === T1 ? '等温：p₁L₁ = p₂L₂' : '状态方程：p₁L₁/T₁ = p₂L₂/T₂'}</div>`;
+    const Lguess = Kt(s.T) / (P0 + st.h * c);
+    html += `<div class="node"><span class="f">L₂ = ${s.T === T1 ? 'p₁L₁/p₂' : 'p₁L₁T₂/(T₁p₂)'}</span> = <span class="v">${fmt(Lguess, 2)} cm</span><br><span class="n">检查：L₂ + h = ${fmt(Lguess + st.h, 2)} cm ${Lguess + st.h <= LtE() + 1e-9 ? '≤' : '>'} 管长 ${fmt(LtE(), 0)} cm${Lguess + st.h <= LtE() + 1e-9 ? '，水银不溢出。' : '，水银会溢出！'}</span></div>`;
+    if (s.x < st.h - 0.01) html += `<div class="link">↓ 设剩余水银柱长 x</div>
+      <div class="node"><span class="f">(p₀ ${c >= 0 ? '+' : '−'} x·${fmt(Math.abs(c), 3)})(${fmt(LtE(), 0)} − x) = p₁L₁${s.T === T1 ? '' : '·T₂/T₁'} = ${fmt(Kt(s.T), 1)}</span><br>解得 <span class="v">x = ${fmt(s.x, 2)} cm，L = ${fmt(s.L, 2)} cm，溢出 ${fmt(st.h - s.x, 2)} cm</span></div>`;
+  } else if (st.mode === 'piston') {
+    const T = pistonT(st.u), s = pistonAt(T), { pi, Tb, Tc } = pistonKeys(), pf = p1();
+    $('ttv').textContent = `T = ${fmt(T, 0)} K`;
+    $('hint').textContent = '右侧是活塞受力；绿色 = 活塞自由（等压），紫色 = 被卡口挡住（等容）';
+    rows = `<tr><td>压强 p</td><td>${fmt(s.p / 1e5, 3)}×10⁵ Pa</td></tr><tr><td>气柱高 h / 体积 V</td><td>${fmt(s.h, 2)} cm / ${fmt(s.V * 1000, 3)} L</td></tr>
+      <tr><td>外界对气体做功 W</td><td>${sg(s.W)}</td></tr><tr><td>内能变化 ΔU</td><td>${sg(s.dU)}</td></tr><tr><td>吸收热量 Q = ΔU − W</td><td>${sg(s.Q)}</td></tr>`;
+    html = `<div class="node"><span class="f">活塞自由时：p = p₀ + mg/S</span> = 1.0×10⁵ + ${st.pm * G0}/${S} = <span class="v">${fmt(pf / 1e5, 3)}×10⁵ Pa</span></div>`;
+    if (st.onStop && Tb > T1 + 1e-6) html += `<div class="link">↓ 第一段：活塞压在下卡口上，等容</div>
+      <div class="node"><span class="f">p₀/T₁ = p/T_b</span> → <span class="v">T_b = ${fmt(Tb, 1)} K</span> 时活塞刚要离开下卡口</div>`;
+    const dh = pistonAt(st.Tmax).h - st.hi;
+    html += `<div class="link">↓ ${st.onStop && Tb > T1 + 1e-6 ? '第二段' : '第一段'}：等压膨胀</div>
+      <div class="node"><span class="f">h₁/T_b = h_上/T_c</span> → <span class="v">T_c = ${fmt(Tc, 1)} K</span> 时活塞到达上卡口<br><span class="n">加热到 ${st.Tmax} K 全程气体对外做功 W' = p·SΔh = ${fmt(pf / 1e5, 3)}×10⁵ × ${S} × ${fmt(dh / 100, 3)} = ${fmt(pf * S * dh / 100, 1)} J</span></div>`;
+    if (st.Tmax > Tc) html += `<div class="link">↓ 再加热：被上卡口挡住，等容</div>
+      <div class="node"><span class="f">p_c/T_c = p₂/T₂</span> → p₂ = ${fmt(pf / 1e5, 3)}×10⁵ × ${st.Tmax}/${fmt(Tc, 1)} = <span class="v">${fmt(pf * st.Tmax / Tc / 1e5, 3)}×10⁵ Pa</span></div>`;
+    else html += `<div class="node"><span class="n">T₂ = ${st.Tmax} K ${st.Tmax < Tc ? '< T_c，活塞还没碰到上卡口' : ''}。</span></div>`;
+    html += `<div class="link">↓ 热力学第一定律（当前时刻）</div>
+      <div class="node"><span class="f">ΔU = Q + W</span>：ΔU = ${sg(s.dU)}，W = ${sg(s.W)} → <span class="v">Q = ${sg(s.Q)}${s.Q > 0 ? '（吸热）' : ''}</span><br><span class="n">等压升温时吸收的热量比内能增加量多出对外做的功。</span></div>`;
+  } else {
+    const q = cycleAt(st.u);
+    $('ttv').textContent = `${KEYS[q.k]}→${KEYS[(q.k + 1) % 3]}`;
+    $('hint').textContent = '拖动 A、B、C；灰色虚线是过各状态点的等温线';
+    const infos = KEYS.map((key, i) => ({ name: key + KEYS[(i + 1) % 3], ...segInfo(st[key], st[KEYS[(i + 1) % 3]]) }));
+    rows = `<tr><td><b>过程</b></td><td style="text-align:right"><b>ΔU</b></td><td style="text-align:right"><b>W</b></td><td><b>Q</b></td></tr>` + infos.map(f => `<tr><td>${f.name}（${f.type}）</td><td style="text-align:right">${sg(f.dU)}</td><td style="text-align:right">${sg(f.W)}</td><td>${sg(f.Q)}</td></tr>`).join('');
+    const Wnet = infos.reduce((a, f) => a + f.W, 0);
+    html = infos.map(f => `<div class="node"><b>${f.name}</b>：${f.type}，末态温度比初态${f.dU > 1e-9 ? '高' : f.dU < -1e-9 ? '低' : '相同'} → ΔU ${f.dU > 1e-9 ? '> 0' : f.dU < -1e-9 ? '< 0' : '= 0'}；V ${f.Wby > 1e-9 ? '增大 → W < 0' : f.Wby < -1e-9 ? '减小 → W > 0' : '不变 → W = 0'}<br>
+      <span class="f">Q = ΔU − W</span> = <span class="v">${sg(f.Q)}（${f.Q > 1e-9 ? '吸热' : f.Q < -1e-9 ? '放热' : '绝热'}）</span>${f.peak ? `<br><span class="n">温度先升后降，最高 ${fmt(Tof([f.peak.V, f.peak.p]), 0)} K（pV 最大处），不是等温过程。</span>` : ''}</div>`).join('');
+    html += `<div class="link">↓ 循环一周</div>
+      <div class="node"><span class="f">ΔU = 0，Q净 = −W净</span> = <span class="v">${sg(-Wnet)}</span>（三角形面积 ${fmt(Math.abs(shoelace()) * 100, 1)} J）<br><span class="n">${Wnet < 0 ? '顺时针：气体对外做净功，从外界净吸热' : '逆时针：外界对气体做净功，气体向外界净放热'}</span></div>`;
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function sync() { $('tt').value = Math.round(st.u * 1000); render(); }
+const DUR = 4;
+const anim = Lab.loop(dt => {
+  st.u += dt * st.speed / (st.mode === 'cycle' ? 6 : DUR);
+  if (st.u >= 1) {
+    if (st.mode === 'cycle') st.u -= 1;
+    else { st.u = 1; sync(); $('play').textContent = '▶ 重新开始'; return false; }
+  }
+  sync();
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.u >= 1) st.u = 0;
+  $('play').textContent = '⏸ 暂停'; anim.start();
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.25 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.u = +$('tt').value / 1000; render(); });
+
+const RNG = {
+  h: v => `${v} cm`, L1: v => `${v} cm`, Lt: v => `${v} cm`, thMax: v => `${v}°`, T: v => `${v} K`,
+  pm: v => `${v} kg`, hi: v => `${v} cm`, hu: v => `${v} cm`, Tmax: v => `${v} K`,
+};
+Object.keys(RNG).forEach(k => Lab.range(k, RNG[k], v => { st[k] = v; render(); }));
+Lab.radios('mode', m => { st.mode = m; st.u = st.mode === 'cycle' ? 0 : 1; anim.stop(); $('play').textContent = '▶ 开始'; sync(); });
+Lab.radios('proc', v => { st.proc = v; render(); });
+$('onStop').addEventListener('change', () => { st.onStop = $('onStop').checked; render(); });
+
+const PRESETS = [
+  ['水银柱：开口向上→水平', { mode: 'tube', proc: 'rot', h: 19, L1: 36, Lt: 100, thMax: 90, T: 300 }],
+  ['水银柱：倒转开口向下', { mode: 'tube', proc: 'rot', h: 19, L1: 36, Lt: 100, thMax: 180, T: 300 }],
+  ['倒转后水银溢出', { mode: 'tube', proc: 'rot', h: 19, L1: 36, Lt: 73, thMax: 180, T: 300 }],
+  ['倾斜 60°', { mode: 'tube', proc: 'rot', h: 19, L1: 36, Lt: 100, thMax: 60, T: 300 }],
+  ['开口向上加热（等压）', { mode: 'tube', proc: 'heat', h: 19, L1: 36, Lt: 100, thMax: 0, T: 360 }],
+  ['等压膨胀：求吸热', { mode: 'piston', pm: 10, hi: 20, hu: 60, Tmax: 450, onStop: false }],
+  ['活塞顶到卡口后等容', { mode: 'piston', pm: 10, hi: 20, hu: 30, Tmax: 600, onStop: false }],
+  ['下卡口：先等容再等压', { mode: 'piston', pm: 10, hi: 20, hu: 60, Tmax: 540, onStop: true }],
+  ['三角形循环：斜线段最高温', { mode: 'cycle', A: [1, 1], B: [1, 3], C: [3, 1] }],
+  ['同一等温线上两点连直线', { mode: 'cycle', A: [1, 3], B: [3, 1], C: [1, 1] }],
+  ['逆时针循环：净放热', { mode: 'cycle', A: [1, 1], B: [3, 1], C: [3, 3] }],
+];
+PRESETS.forEach(([name, o]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, JSON.parse(JSON.stringify(o)));
+    Lab.setRadio('mode', st.mode); Lab.setRadio('proc', st.proc); $('onStop').checked = st.onStop;
+    Object.keys(RNG).forEach(k => Lab.setRange(k, st[k]));
+    anim.stop(); st.u = 0; sync();
+    $('play').textContent = '⏸ 暂停'; anim.start();
+  });
+  $('presets').appendChild(btn);
+});
+st.u = 1; sync();
+</script>
+</body>
+</html>

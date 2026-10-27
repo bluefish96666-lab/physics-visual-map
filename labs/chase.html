@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>追及相遇与运动图像 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>追及相遇与运动图像</b><span class="crumb">必修第一册 · 第二章 匀变速直线运动的研究</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">频闪点每隔相同时间记录一次位置：间距不变是匀速，越来越大是加速，越来越小是减速</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">追及相遇问题抓住两点：<b>速度相等</b>是距离最大或最小的临界时刻；<b>位置相同</b>才是相遇，即 x_A = x_B + d。</div>
+
+    <h2>后车 A（橙色）</h2>
+    <div class="row">初速度 v_A <input type="range" id="vA" min="0" max="30" step="1" value="0"><span class="val" id="vAv"></span></div>
+    <div class="row">加速度 a_A <input type="range" id="aA" min="-8" max="6" step="0.5" value="3"><span class="val" id="aAv"></span></div>
+    <div class="row">反应时间 t₀ <input type="range" id="tr" min="0" max="1.5" step="0.1" value="0"><span class="val" id="trv"></span></div>
+
+    <h2>前车 B（蓝色）</h2>
+    <div class="row">初始距离 d <input type="range" id="d" min="0" max="100" step="1" value="0"><span class="val" id="dv"></span></div>
+    <div class="row">初速度 v_B <input type="range" id="vB" min="0" max="30" step="1" value="6"><span class="val" id="vBv"></span></div>
+    <div class="row">加速度 a_B <input type="range" id="aB" min="-8" max="6" step="0.5" value="0"><span class="val" id="aBv"></span></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="stop" checked>刹车：速度减到 0 后停止，不倒退</label></div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="slow">慢放 0.25×</button></div>
+    <div class="row">时刻 t <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2>当前时刻</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul>
+        <li>后车速度小于前车时，距离越来越大；后车速度大于前车时，距离越来越小。所以<b>共速时距离最大或最小</b>。</li>
+        <li>匀加速追匀速（从同一点出发）：共速时距离最大，一定能追上，追上时后车速度是前车的 2 倍。</li>
+        <li>减速追匀速：共速时还没追上，就再也追不上，此时距离最小；不相撞的临界条件是共速时恰好相遇。</li>
+        <li>刹车陷阱：被追的车在减速，要先算它多久停下。若停下时还没被追上，就用它的刹车距离 v²/(2a) 列式，不能直接解二次方程。</li>
+        <li>v-t 图像：两线所夹面积等于两车距离的<b>变化量</b>，交点是共速时刻，不是相遇时刻。x-t 图像：交点才是相遇。</li>
+        <li>反应时间内车仍匀速行驶：停车距离 = v·t₀ + v²/(2a)。两车速度、刹车加速度都相同时，安全距离等于 v·t₀。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const TMAX = 60, H_GRID = 0.002;
+const st = { vA: 0, aA: 3, tr: 0, d: 0, vB: 6, aB: 0, stop: true, t: 0, speed: 1 };
+let run = null;
+
+function car(x0, v0, a, tr, stop) {
+  const ts = stop && a < 0 ? tr + v0 / -a : Infinity;
+  const at = t => {
+    if (t <= tr) return { x: x0 + v0 * t, v: v0 };
+    const xr = x0 + v0 * tr;
+    if (t >= ts) return { x: xr + v0 * v0 / (-2 * a), v: 0 };
+    const u = t - tr;
+    return { x: xr + v0 * u + 0.5 * a * u * u, v: v0 + a * u };
+  };
+  return { at, ts, x0, v0, a, tr };
+}
+
+// 在 [0, TMAX] 上找 f 的变号点（相邻格点二分）
+function roots(f, from = H_GRID) {
+  const out = [];
+  let ta = from, fa = f(ta);
+  for (let tb = from + H_GRID; tb <= TMAX; tb += H_GRID) {
+    const fb = f(tb);
+    if (fa === 0 && out.length === 0 && ta <= from + 1e-12) { /* 起点恰为零不计 */ }
+    else if ((fa < 0 && fb >= 0) || (fa > 0 && fb <= 0)) {
+      let lo = ta, hi = tb;
+      for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; const fm = f(m); if (fm !== 0 && (fa < 0) === (fm < 0)) lo = m; else hi = m; }
+      out.push((lo + hi) / 2);
+      if (fb === 0) { while (tb + H_GRID <= TMAX && f(tb + H_GRID) === 0) tb += H_GRID; }
+    }
+    ta = tb; fa = fb;
+  }
+  return out;
+}
+
+function analyse(A, B, d) {
+  const gap = t => B.at(t).x - A.at(t).x;
+  const dv = t => A.at(t).v - B.at(t).v;
+  const meets = roots(gap).filter((t, i, a) => i === 0 || t - a[i - 1] > 1e-4);
+  const eqs = roots(dv);
+  return { gap, dv, meets, teq: eqs.length ? eqs[0] : null };
+}
+
+function simulate() {
+  const A = car(0, st.vA, st.aA, st.tr, st.stop), B = car(st.d, st.vB, st.aB, 0, st.stop);
+  const an = analyse(A, B, st.d);
+  const ev = [4, ...an.meets, an.teq || 0, isFinite(A.ts) ? A.ts : 0, isFinite(B.ts) ? B.ts : 0];
+  const T = Math.min(TMAX, Math.max(...ev) * 1.25 + 1);
+  const pts = [];
+  for (let i = 0; i <= 600; i++) {
+    const t = T * i / 600, a = A.at(t), b = B.at(t);
+    pts.push({ t, xA: a.x, vA: a.v, xB: b.x, vB: b.v });
+  }
+  // 极值：首次相遇前（或全程）的最小 / 最大距离
+  const tEnd = an.meets.length ? an.meets[0] : T;
+  let gmin = { g: Infinity, t: 0 }, gmax = { g: -Infinity, t: 0 };
+  for (let t = 0; t <= tEnd + 1e-9; t += H_GRID) {
+    const g = an.gap(t);
+    if (g < gmin.g) gmin = { g, t };
+    if (g > gmax.g) gmax = { g, t };
+  }
+  if (an.teq !== null && an.teq <= tEnd) {
+    const g = an.gap(an.teq);
+    if (an.dv(an.teq / 2) > 0) gmin = { g, t: an.teq }; else gmax = { g, t: an.teq };
+  }
+  // 不考虑停车时的"直接解方程"结果，用来提示刹车陷阱
+  const nA = car(0, st.vA, st.aA, st.tr, false), nB = car(st.d, st.vB, st.aB, 0, false);
+  const naive = analyse(nA, nB, st.d).meets;
+  return { A, B, ...an, T, pts, gmin, gmax, naive };
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+function drawCar(c, x, y, s, color, label) {
+  c.fillStyle = color; c.fillRect(x - s * 1.6, y - s * 0.9, s * 1.6, s * 0.6);
+  c.fillStyle = 'rgba(255,255,255,.8)'; c.fillRect(x - s * 1.15, y - s * 1.3, s * 0.75, s * 0.4);
+  c.strokeStyle = color; c.lineWidth = 2; c.strokeRect(x - s * 1.2, y - s * 1.32, s * 0.85, s * 0.44);
+  dot(c, x - s * 1.25, y - s * 0.25, s * 0.22, '#111827', null);
+  dot(c, x - s * 0.35, y - s * 0.25, s * 0.22, '#111827', null);
+  text(c, label, x - s * 0.8, y - s * 0.6, '#fff', { bold: true, size: 11, halo: false });
+}
+function draw() {
+  if (!view.W || !run) return;
+  const c = ctx, W = view.W, H = view.H, t = st.t, a = run.A.at(t), b = run.B.at(t);
+  view.begin();
+  let lo = Infinity, hi = -Infinity;
+  run.pts.forEach(p => { lo = Math.min(lo, p.xA, p.xB); hi = Math.max(hi, p.xA, p.xB); });
+  lo = Math.min(lo, 0); hi = Math.max(hi, lo + 10);
+  const L = 70, R = W - 40, k = (R - L) / (hi - lo), X = x => L + (x - lo) * k;
+  const yB = H * 0.42, yA = H * 0.62;
+  // 道路
+  c.fillStyle = '#f5f5f4'; c.fillRect(0, yB - 46, W, yA - yB + 60);
+  line(c, 0, yB - 46, W, yB - 46, '#78716c', 2);
+  line(c, 0, yA + 14, W, yA + 14, '#78716c', 2);
+  line(c, 0, (yA + yB) / 2 - 16, W, (yA + yB) / 2 - 16, '#d6d3d1', 2, [14, 10]);
+  const step = Lab.niceStep(hi - lo, 8);
+  for (let x = Math.ceil(lo / step) * step; x <= hi + 1e-9; x += step) {
+    line(c, X(x), yA + 14, X(x), yA + 22, '#a8a29e', 1);
+    text(c, `${fmt(x, 0)} m`, X(x), yA + 32, '#a8a29e', { size: 10, halo: false });
+  }
+  // 频闪点
+  const dt = Lab.niceStep(run.T, 12);
+  for (let s = 0; s <= t + 1e-9; s += dt) {
+    dot(c, X(run.A.at(s).x), yA + 6, 3.5, 'rgba(234,88,12,.55)', null);
+    dot(c, X(run.B.at(s).x), yB + 6, 3.5, 'rgba(37,99,235,.55)', null);
+  }
+  text(c, `频闪间隔 ${fmt(dt, dt < 1 ? 1 : 0)} s`, W - 14, yA + 50, '#6b7280', { size: 11, align: 'right' });
+  // 相遇位置
+  run.meets.forEach((tm, i) => {
+    if (tm > t + 1e-9) return;
+    const xm = X(run.A.at(tm).x);
+    line(c, xm, yB - 60, xm, yA + 14, '#16a34a', 1.5, [5, 4]);
+    text(c, `第 ${i + 1} 次相遇 t = ${fmt(tm, 2)} s`, xm, yB - 70 - i * 16, '#16a34a', { bold: true, size: 12 });
+  });
+  const s = 20;
+  drawCar(c, X(b.x), yB, s, '#2563eb', 'B');
+  drawCar(c, X(a.x), yA, s, '#ea580c', 'A');
+  // 速度箭头
+  const vm = Math.max(1, ...run.pts.map(p => Math.max(Math.abs(p.vA), Math.abs(p.vB)))), kv = 70 / vm;
+  if (Math.abs(b.v) > 0.01) vec(c, X(b.x) + 4, yB - s * 0.6, X(b.x) + 4 + b.v * kv, yB - s * 0.6, '#2563eb', 2.4, 8);
+  if (Math.abs(a.v) > 0.01) vec(c, X(a.x) + 4, yA - s * 0.6, X(a.x) + 4 + a.v * kv, yA - s * 0.6, '#ea580c', 2.4, 8);
+  text(c, `v_B = ${fmt(b.v, 2)} m/s`, X(b.x) - s * 0.8, yB - s * 2.1, '#2563eb', { bold: true, size: 12 });
+  text(c, `v_A = ${fmt(a.v, 2)} m/s`, X(a.x) - s * 0.8, yA - s * 2.1, '#ea580c', { bold: true, size: 12 });
+  // 距离
+  const g = b.x - a.x, ym = (yA + yB) / 2 - 16;
+  if (Math.abs(g * k) > 6) {
+    line(c, X(a.x), ym, X(b.x), ym, '#7c3aed', 2);
+    line(c, X(a.x), ym - 6, X(a.x), ym + 6, '#7c3aed', 2);
+    line(c, X(b.x), ym - 6, X(b.x), ym + 6, '#7c3aed', 2);
+  }
+  text(c, `Δx = x_B − x_A = ${fmt(g, 2)} m`, (X(a.x) + X(b.x)) / 2, ym - 12, '#7c3aed', { bold: true, size: 12 });
+  // 状态
+  let state = '';
+  if (t < st.tr) state = 'A 在反应时间内：仍匀速行驶';
+  else if (a.v > b.v + 1e-9) state = 'v_A > v_B：距离在减小';
+  else if (a.v < b.v - 1e-9) state = 'v_A < v_B：距离在增大';
+  else state = '两车速度相等';
+  text(c, state, 14, 22, '#111827', { bold: true, size: 14, align: 'left' });
+  text(c, `t = ${fmt(t, 2)} s`, W - 14, 22, '#111827', { bold: true, size: 15, align: 'right' });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W || !run) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2, t = st.t, P = run.pts;
+  chartView.begin();
+  const a = run.A.at(t), b = run.B.at(t);
+  const vs = P.flatMap(q => [q.vA, q.vB]);
+  const vmin = Math.min(0, ...vs), vmax = Math.max(1, ...vs) * 1.15;
+  const vl = run.teq !== null ? [{ x: run.teq, color: '#7c3aed', label: `共速 t = ${fmt(run.teq, 2)} s` }] : [];
+  const pl = Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: run.T, ymin: vmin, ymax: vmax, xlabel: 't / s', ylabel: 'v / (m/s)', legendX: 80,
+    series: [{ pts: P.map(q => [q.t, q.vA]), color: '#ea580c', label: 'A' }, { pts: P.map(q => [q.t, q.vB]), color: '#2563eb', label: 'B' }],
+    vlines: vl, points: [{ x: t, y: a.v, color: '#ea580c' }, { x: t, y: b.v, color: '#2563eb' }],
+  });
+  // 两线所夹面积 = 距离的变化量
+  const upto = P.filter(q => q.t <= t);
+  if (upto.length > 1) {
+    c.beginPath();
+    upto.forEach((q, i) => (i ? c.lineTo(pl.X(q.t), pl.Y(q.vA)) : c.moveTo(pl.X(q.t), pl.Y(q.vA))));
+    for (let i = upto.length - 1; i >= 0; i--) c.lineTo(pl.X(upto[i].t), pl.Y(upto[i].vB));
+    c.closePath(); c.fillStyle = 'rgba(124,58,237,.15)'; c.fill();
+    text(c, `紫色面积 = 距离变化 ${fmt(b.x - a.x - st.d, 2)} m`, pl.x1 - 4, pl.y1 + 10, '#7c3aed', { size: 11, bold: true, align: 'right' });
+  }
+  const xs = P.flatMap(q => [q.xA, q.xB]);
+  const xmin = Math.min(0, ...xs), xmax = Math.max(1, ...xs) * 1.1;
+  Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: run.T, ymin: xmin, ymax: xmax, xlabel: 't / s', ylabel: 'x / m', legendX: 70,
+    series: [{ pts: P.map(q => [q.t, q.xA]), color: '#ea580c', label: 'A' }, { pts: P.map(q => [q.t, q.xB]), color: '#2563eb', label: 'B' }],
+    vlines: vl.map(v => ({ ...v, label: '' })),
+    points: [{ x: t, y: a.x, color: '#ea580c' }, { x: t, y: b.x, color: '#2563eb' }]
+      .concat(run.meets.map((tm, i) => ({ x: tm, y: run.A.at(tm).x, color: '#16a34a', r: 6, label: `相遇 ${fmt(tm, 2)} s` }))),
+  });
+}
+
+// ---------- 面板 ----------
+function motionDesc(name, v0, a0, tr, ts) {
+  const parts = [];
+  if (tr > 0) parts.push(`前 ${fmt(tr, 1)} s 匀速（反应时间，x = v₀t₀ = ${fmt(v0 * tr, 2)} m）`);
+  if (a0 === 0) parts.push(v0 === 0 ? '静止' : '匀速');
+  else if (a0 > 0) parts.push(`匀加速 a = ${a0} m/s²`);
+  else parts.push(`匀减速 a = ${a0} m/s²` + (isFinite(ts) ? `，t = ${fmt(ts, 2)} s 停下，刹车距离 v₀²/(2|a|) = ${fmt(v0 * v0 / (-2 * a0), 2)} m` : ''));
+  return `<b>${name}</b>：${parts.join('，然后')}`;
+}
+function updatePanel() {
+  const t = st.t, a = run.A.at(t), b = run.B.at(t);
+  $('ttv').textContent = `${fmt(t, 2)} s`;
+  $('tbl').innerHTML = `
+    <tr><td></td><td>A（后车）</td><td>B（前车）</td></tr>
+    <tr><td>位置 x</td><td>${fmt(a.x, 2)} m</td><td>${fmt(b.x, 2)} m</td></tr>
+    <tr><td>速度 v</td><td>${fmt(a.v, 2)} m/s</td><td>${fmt(b.v, 2)} m/s</td></tr>
+    <tr><td>距离 Δx = x_B − x_A</td><td colspan="2">${fmt(b.x - a.x, 2)} m</td></tr>`;
+  const { A, B, teq, meets, gmin, gmax, naive } = run;
+  let html = `<div class="node"><span class="f">先分析各自的运动</span><br><span class="n">${motionDesc('A', st.vA, st.aA, st.tr, A.ts)}<br>${motionDesc('B', st.vB, st.aB, 0, B.ts)}</span></div>`;
+  const dv0 = A.at(1e-6).v - B.at(1e-6).v, closing = dv0 > 1e-9 || (Math.abs(dv0) <= 1e-9 && A.at(0.01).v > B.at(0.01).v);
+  html += `<div class="link">↓ 比较速度：${closing ? 'v_A > v_B，距离先减小' : 'v_A < v_B，距离先增大'}</div>`;
+  if (teq !== null) {
+    const pa = A.at(teq), pb = B.at(teq);
+    html += `<div class="node"><span class="f">共速：v_A(t) = v_B(t)</span> → <span class="v">t = ${fmt(teq, 3)} s，v = ${fmt(pa.v, 2)} m/s</span><br><span class="n">此时 x_A = ${fmt(pa.x, 2)} m，x_B = ${fmt(pb.x, 2)} m，距离 ${fmt(pb.x - pa.x, 2)} m</span></div>`;
+  } else html += `<div class="node"><span class="n">两车速度不会相等（或一直相等），距离单调变化${isFinite(A.ts) || isFinite(B.ts) ? '，直到车停下' : ''}。</span></div>`;
+  if (closing) {
+    if (meets.length && (teq === null || meets[0] <= teq + 1e-6)) {
+      html += `<div class="link">↓ 共速之前距离已减为 0</div><div class="node"><span class="f">能追上（若同一车道则相撞）</span><br><span class="v">t = ${fmt(meets[0], 3)} s，此时 v_A = ${fmt(A.at(meets[0]).v, 2)}，v_B = ${fmt(B.at(meets[0]).v, 2)} m/s</span></div>`;
+      if (teq !== null) {
+        const dc = st.d - run.gap(teq);
+        if (dc > st.d) html += `<div class="link">↓ 不相撞的临界条件：共速（或停下）时恰好相遇</div><div class="node"><span class="f">d ≥ d − Δx(共速)</span> = <span class="v">${fmt(dc, 2)} m</span><br><span class="n">把 d 拖到这个值以上试试。</span></div>`;
+      }
+    } else {
+      html += `<div class="link">↓ 共速（或停下）时距离最小</div><div class="node"><span class="f">Δx_min = ${fmt(gmin.g, 2)} m</span>（t = ${fmt(gmin.t, 2)} s）<br><span class="v">${gmin.g > 1e-6 ? '追不上，不相撞' : '恰好追上'}</span><br><span class="n">不相撞的最小初始距离 d₀ = d − Δx_min = ${fmt(st.d - gmin.g, 2)} m</span></div>`;
+      if (meets.length) html += `<div class="link">↓ 之后 A 又追上</div><div class="node"><span class="v">相遇 t = ${fmt(meets[0], 3)} s</span></div>`;
+    }
+  } else {
+    if (teq !== null) html += `<div class="link">↓ 共速时距离最大</div><div class="node"><span class="f">Δx_max = ${fmt(gmax.g, 2)} m</span>（t = ${fmt(gmax.t, 2)} s）</div>`;
+    if (meets.length) {
+      const tm = meets[0], pa = A.at(tm);
+      html += `<div class="link">↓ 相遇条件 x_A = x_B</div><div class="node"><span class="v">t = ${fmt(tm, 3)} s，x = ${fmt(pa.x, 2)} m，v_A = ${fmt(pa.v, 2)} m/s</span>${st.vA === 0 && st.aB === 0 && st.d === 0 && st.tr === 0 && st.aA > 0 ? `<br><span class="n">从同一点出发：追上时 v_A = 2v_B（平均速度相等）</span>` : ''}</div>`;
+    } else html += '<div class="node"><span class="v">在所示时间内追不上</span></div>';
+  }
+  if (meets.length && naive.length && Math.abs(naive[0] - meets[0]) > 1e-3 && meets[0] > Math.min(A.ts, B.ts) - 1e-6) {
+    const who = B.ts < meets[0] ? 'B' : 'A';
+    html += `<div class="link">↓ 刹车陷阱</div><div class="node"><span class="f">若直接代 x = v₀t + ½at² 解方程：t = ${fmt(naive[0], 3)} s ✗</span><br><span class="n">${who} 在 t = ${fmt(Math.min(A.ts, B.ts), 2)} s 已经停下，之后不再运动。应先判断停车时刻，再用刹车距离列式，正确答案 t = ${fmt(meets[0], 3)} s。</span></div>`;
+  } else if (meets.length && !naive.length && isFinite(B.ts) && meets[0] > B.ts) {
+    html += `<div class="link">↓ 刹车陷阱</div><div class="node"><span class="n">若不考虑 B 停下，方程无解；实际 B 在 t = ${fmt(B.ts, 2)} s 停下后才被追上。</span></div>`;
+  }
+  if (meets.length > 1) html += `<div class="node"><span class="n">共相遇 ${meets.length} 次：${meets.map(m => fmt(m, 2) + ' s').join('，')}</span></div>`;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function rebuild() { run = simulate(); st.t = Math.min(st.t, run.T); $('tt').value = Math.round(st.t / run.T * 1000); render(); }
+const anim = Lab.loop(dt => {
+  st.t = Math.min(run.T, st.t + dt * st.speed * Math.max(1, run.T / 12));
+  $('tt').value = Math.round(st.t / run.T * 1000);
+  render();
+  if (st.t >= run.T) { $('play').textContent = '▶ 重新开始'; return false; }
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.t >= run.T - 1e-9) st.t = 0;
+  $('play').textContent = '⏸ 暂停'; anim.start();
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.25 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.t = +$('tt').value / 1000 * run.T; render(); });
+const unit = { vA: 'm/s', vB: 'm/s', aA: 'm/s²', aB: 'm/s²', tr: 's', d: 'm' };
+Object.keys(unit).forEach(k => Lab.range(k, v => `${fmt(v, k === 'tr' || k.startsWith('a') ? 1 : 0)} ${unit[k]}`, v => { st[k] = v; st.t = 0; rebuild(); }));
+$('stop').addEventListener('change', () => { st.stop = $('stop').checked; st.t = 0; rebuild(); });
+
+const PRESETS = [
+  ['匀加速追匀速：最大距离', { vA: 0, aA: 3, tr: 0, d: 0, vB: 6, aB: 0 }],
+  ['匀速追刹车：刹车陷阱', { vA: 4, aA: 0, tr: 0, d: 7, vB: 10, aB: -2 }],
+  ['减速追匀速：能否相撞', { vA: 20, aA: -2, tr: 0, d: 40, vB: 8, aB: 0 }],
+  ['反应时间 + 刹车', { vA: 20, aA: -5, tr: 0.5, d: 55, vB: 0, aB: 0 }],
+  ['前车急刹：安全距离', { vA: 20, aA: -5, tr: 0.5, d: 12, vB: 20, aB: -5 }],
+  ['两次相遇', { vA: 10, aA: 0, tr: 0, d: 9, vB: 2, aB: 2 }],
+];
+PRESETS.forEach(([name, o]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, o, { stop: true });
+    $('stop').checked = true;
+    Object.keys(unit).forEach(k => Lab.setRange(k, st[k]));
+    st.t = 0; rebuild();
+    $('play').textContent = '⏸ 暂停'; anim.start();
+  });
+  $('presets').appendChild(btn);
+});
+rebuild();
+</script>
+</body>
+</html>

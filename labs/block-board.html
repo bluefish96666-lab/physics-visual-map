@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>板块模型与传送带 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>板块模型与传送带</b><span class="crumb">必修第一册 · 第四章 运动和力的关系</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">解题主线：<b>分别受力分析 → 各自加速度 → 找共速时刻 → 判断共速后是否一起运动</b>。v–t 图中两条线之间的面积就是相对位移。</div>
+
+    <h2>模型</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="board" checked>滑块—木板</label>
+      <label class="chk"><input type="radio" name="mode" value="belt">传送带</label>
+    </div>
+
+    <div id="boardBox">
+      <div class="grid">
+        <div class="row">物块 m <input type="range" id="m" min="0.5" max="5" step="0.5" value="1"><span class="val" id="mv"></span></div>
+        <div class="row">木板 M <input type="range" id="M" min="0.5" max="5" step="0.5" value="2"><span class="val" id="Mv"></span></div>
+      </div>
+      <div class="row">块与板 μ₁ <input type="range" id="mu1" min="0" max="0.8" step="0.05" value="0.4"><span class="val" id="mu1v"></span></div>
+      <div class="row">板与地 μ₂ <input type="range" id="mu2" min="0" max="0.5" step="0.05" value="0"><span class="val" id="mu2v"></span></div>
+      <div class="row">物块初速度 v₁₀ <input type="range" id="v10" min="0" max="10" step="0.5" value="6"><span class="val" id="v10v"></span></div>
+      <div class="row">木板初速度 v₂₀ <input type="range" id="v20" min="0" max="10" step="0.5" value="0"><span class="val" id="v20v"></span></div>
+      <div class="row">恒力 F <input type="range" id="F" min="0" max="40" step="0.5" value="0"><span class="val" id="Fv"></span></div>
+      <div class="row">F 作用在
+        <label class="chk"><input type="radio" name="Fon" value="block" checked>物块上</label>
+        <label class="chk"><input type="radio" name="Fon" value="board">木板上</label>
+      </div>
+      <div class="row">木板长 L <input type="range" id="L" min="1" max="12" step="0.5" value="6"><span class="val" id="Lv"></span></div>
+    </div>
+
+    <div id="beltBox">
+      <div class="row">倾角 θ <input type="range" id="th" min="0" max="40" step="1" value="0"><span class="val" id="thv"></span></div>
+      <div class="row">传送带速度 u <input type="range" id="u" min="-10" max="10" step="0.5" value="4"><span class="val" id="uv"></span></div>
+      <div class="row">物块初速度 v₀ <input type="range" id="bv0" min="-10" max="10" step="0.5" value="0"><span class="val" id="bv0v"></span></div>
+      <div class="row">动摩擦因数 μ <input type="range" id="mu" min="0.05" max="1" step="0.05" value="0.2"><span class="val" id="muv"></span></div>
+      <div class="row">传送带长 L <input type="range" id="bL" min="2" max="20" step="0.5" value="8"><span class="val" id="bLv"></span></div>
+      <div class="row muted">速度正方向：水平时向右，倾斜时沿斜面向下。</div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="slow">慢放 0.5×</button></div>
+    <div class="row">时刻 t <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2>当前时刻</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分段分析（自动生成）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const g = 10, DEG = Math.PI / 180, DT = 1e-4, TMAX = 12, EPS = 1e-6;
+const st = {
+  mode: 'board', t: 0, speed: 1,
+  m: 1, M: 2, mu1: 0.4, mu2: 0, v10: 6, v20: 0, F: 0, Fon: 'block', L: 6,
+  th: 0, u: 4, bv0: 0, mu: 0.2, bL: 8,
+};
+let run = null;   // 预先算好的整段运动
+
+// ---------- 滑块—木板 ----------
+function boardAcc(v1, v2) {
+  const { m, M, mu1, mu2, F } = st, N1 = m * g, N2 = (m + M) * g;
+  const F1 = st.Fon === 'block' ? F : 0, F2 = st.Fon === 'board' ? F : 0;
+  const ground = (v, other) => {
+    if (Math.abs(v) > EPS) return -Math.sign(v) * mu2 * N2;
+    return Math.abs(other) <= mu2 * N2 ? -other : -Math.sign(other) * mu2 * N2;
+  };
+  if (Math.abs(v1 - v2) < EPS) {
+    // 先假设一起运动，检查需要的静摩擦力是否超过最大静摩擦力
+    const fg = ground(v2, F1 + F2), a = (F1 + F2 + fg) / (m + M);
+    const f = m * a - F1;
+    if (Math.abs(f) <= mu1 * N1 + 1e-9) return { a1: a, a2: a, f, fg, stick: true };
+    const s = Math.sign(f);   // 物块需要的摩擦力方向；达不到就向这个方向滑动摩擦
+    const f1 = s * mu1 * N1, a1 = (F1 + f1) / m;
+    const fg2 = ground(v2, F2 - f1), a2 = (F2 - f1 + fg2) / M;
+    return { a1, a2, f: f1, fg: fg2, stick: false };
+  }
+  const f1 = -Math.sign(v1 - v2) * mu1 * N1;
+  const fg = ground(v2, F2 - f1);
+  return { a1: (F1 + f1) / m, a2: (F2 - f1 + fg) / M, f: f1, fg, stick: false };
+}
+
+function simBoard() {
+  // 物块相对木板向右运动时从左端开始，否则放在右端
+  const A0 = boardAcc(st.v10, st.v20);
+  const fwd = st.v10 > st.v20 || (st.v10 === st.v20 && A0.a1 >= A0.a2);
+  let v1 = st.v10, v2 = st.v20, x1 = fwd ? 0 : st.L, x2 = 0, t = 0, Q1 = 0, Q2 = 0, end = null;
+  const pts = [], segs = [];
+  let seg = null;
+  while (t < TMAX) {
+    let A = boardAcc(v1, v2);
+    const key = A.stick ? 'stick' : 'slip';
+    if (!seg || seg.key !== key || Math.abs(seg.a1 - A.a1) > 1e-6 || Math.abs(seg.a2 - A.a2) > 1e-6) {
+      if (seg) { seg.t1 = t; seg.v1e = v1; seg.v2e = v2; }
+      seg = { key, a1: A.a1, a2: A.a2, f: A.f, fg: A.fg, t0: t, v1s: v1, v2s: v2 };
+      segs.push(seg);
+    }
+    if (pts.length === 0 || t - pts[pts.length - 1].t >= 0.01 - 1e-9) pts.push({ t, v1, v2, x1, x2, Q1, Q2, f: A.f, fg: A.fg });
+    const n1 = v1 + A.a1 * DT, n2 = v2 + A.a2 * DT, rel0 = v1 - v2, rel1 = n1 - n2;
+    x1 += (v1 + n1) / 2 * DT; x2 += (v2 + n2) / 2 * DT;
+    Q1 += Math.abs(rel0) * Math.abs(A.f) * DT * (A.stick ? 0 : 1);
+    Q2 += Math.abs(v2) * Math.abs(A.fg) * DT * (Math.abs(v2) > EPS ? 1 : 0);
+    const old2 = v2;
+    v1 = n1; v2 = n2;
+    // 相对速度或木板速度过零时摩擦力方向会变，停在零点重新判断
+    if (!A.stick && Math.sign(rel0) !== Math.sign(rel1) && Math.abs(rel0) > EPS) v1 = v2 = (v1 + v2) / 2;
+    if (st.mu2 > 0 && Math.abs(old2) > EPS && Math.sign(old2) !== Math.sign(v2)) { if (A.stick) v1 = 0; v2 = 0; }
+    t += DT;
+    const rel = x1 - x2;
+    if (rel > st.L + 1e-9 || rel < -1e-9) { end = { t, type: rel > st.L ? 'offR' : 'offL' }; break; }
+    if (A.stick && Math.abs(A.a1) < 1e-9 && t - seg.t0 > 1) { end = { t, type: Math.abs(v1) < 1e-6 ? 'stop' : 'uniform' }; break; }
+  }
+  if (seg) { seg.t1 = t; seg.v1e = v1; seg.v2e = v2; }
+  pts.push({ t, v1, v2, x1, x2, Q1, Q2, f: 0, fg: 0 });
+  return { pts, segs, T: t, end: end || { t, type: 'time' } };
+}
+
+// ---------- 传送带：s 沿传送带，水平时向右为正，倾斜时沿斜面向下为正 ----------
+function beltAcc(v) {
+  const sn = Math.sin(st.th * DEG), cs = Math.cos(st.th * DEG), fmax = st.mu * g * cs;
+  if (Math.abs(v - st.u) < EPS) {
+    if (g * sn <= fmax + 1e-9) return { a: 0, f: -g * sn, stick: true };
+    return { a: g * sn - fmax, f: -fmax, stick: false };
+  }
+  const f = Math.sign(st.u - v) * fmax;
+  return { a: g * sn + f, f, stick: false };
+}
+function simBelt() {
+  const startTop = st.bv0 > 0 || (st.bv0 === 0 && st.u >= 0);
+  let s = startTop ? 0 : st.bL, v = st.bv0, t = 0, Q = 0, path = 0, end = null;
+  let qmin = s, qmax = s;   // 物块在传送带上留下痕迹的范围（以传送带为参考系）
+  const pts = [], segs = [];
+  let seg = null;
+  while (t < TMAX) {
+    const A = beltAcc(v);
+    const key = A.stick ? 'stick' : 'slip';
+    if (!seg || seg.key !== key || Math.abs(seg.a - A.a) > 1e-6) {
+      if (seg) { seg.t1 = t; seg.ve = v; seg.se = s; }
+      seg = { key, a: A.a, f: A.f, t0: t, vs: v, ss: s };
+      segs.push(seg);
+    }
+    if (pts.length === 0 || t - pts[pts.length - 1].t >= 0.01 - 1e-9) pts.push({ t, v, s, Q, path, qmin, qmax });
+    const nv = v + A.a * DT, r0 = v - st.u, r1 = nv - st.u;
+    s += (v + nv) / 2 * DT;
+    if (!A.stick) { path += Math.abs(r0) * DT; Q += st.mu * g * Math.cos(st.th * DEG) * Math.abs(r0) * DT; }
+    v = nv;
+    if (!A.stick && Math.sign(r0) !== Math.sign(r1) && Math.abs(r0) > EPS) v = st.u;
+    t += DT;
+    const q = s - st.u * t;
+    qmin = Math.min(qmin, q); qmax = Math.max(qmax, q);
+    if (s > st.bL || s < 0) { end = { t, type: s > st.bL ? 'offEnd' : 'offStart' }; break; }
+    if (A.stick && Math.abs(st.u) < 1e-9 && t - seg.t0 > 1) { end = { t, type: 'rest' }; break; }
+  }
+  if (seg) { seg.t1 = t; seg.ve = v; seg.se = s; }
+  pts.push({ t, v, s, Q, path, qmin, qmax });
+  return { pts, segs, T: t, end: end || { t, type: 'time' }, startTop };
+}
+
+function compute() { run = st.mode === 'board' ? simBoard() : simBelt(); }
+function sample(t) {
+  const p = run.pts;
+  if (t >= run.T) return p[p.length - 1];
+  const i = Math.min(p.length - 1, Math.max(0, Math.floor(t / 0.01)));
+  return p[i];
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+function draw() {
+  if (!view.W || !run) return;
+  view.begin();
+  if (st.mode === 'board') drawBoard(); else drawBelt();
+  text(ctx, `t = ${fmt(Math.min(st.t, run.T), 2)} s`, view.W - 14, 20, '#111827', { bold: true, size: 15, align: 'right' });
+}
+
+function drawBoard() {
+  const c = ctx, W = view.W, H = view.H, p = sample(st.t);
+  const k = Math.min((W - 160) / (st.L * 1.5), 60);
+  const cam = p.x2 + st.L / 2;
+  const X = x => W / 2 + (x - cam) * k;
+  const gy = H * 0.62, bh = 22, bs = Math.max(26, Math.min(44, 0.9 * k));
+  // 地面与刻度（随参考系移动，能看出木板在动）
+  c.fillStyle = st.mu2 > 0 ? '#e7e5e4' : '#f1f5f9';
+  c.fillRect(0, gy, W, H - gy);
+  line(c, 0, gy, W, gy, '#78716c', 2);
+  const step = Lab.niceStep(W / k, 10);
+  for (let x = Math.floor((cam - W / 2 / k) / step) * step; X(x) < W; x += step) {
+    line(c, X(x), gy, X(x), gy + 8, '#a8a29e', 1);
+    text(c, `${fmt(x, 0)}`, X(x), gy + 18, '#a8a29e', { size: 10, halo: false });
+  }
+  text(c, st.mu2 > 0 ? `地面粗糙 μ₂ = ${st.mu2}` : '地面光滑', 14, gy + 30, '#78716c', { size: 12, align: 'left' });
+  // 木板
+  c.fillStyle = '#93c5fd'; c.strokeStyle = '#2563eb'; c.lineWidth = 2;
+  c.fillRect(X(p.x2), gy - bh, st.L * k, bh); c.strokeRect(X(p.x2), gy - bh, st.L * k, bh);
+  text(c, `M = ${st.M} kg`, X(p.x2) + st.L * k / 2, gy - bh / 2, '#1e3a8a', { size: 12, bold: true });
+  // 物块：左端与木板左端对齐时 x1 − x2 = 0
+  // 物块看作质点：相对位移从 0 到 L 时，方块从板的左端移到右端
+  const by = gy - bh - bs;
+  const blx = X(p.x1) - Math.min(bs, st.L * k) * (p.x1 - p.x2) / st.L;
+  c.fillStyle = '#fdba74'; c.strokeStyle = '#ea580c';
+  c.fillRect(blx, by, bs, bs); c.strokeRect(blx, by, bs, bs);
+  text(c, `m`, blx + bs / 2, by + bs / 2, '#7c2d12', { bold: true });
+  // 速度
+  const kv = 12;
+  if (Math.abs(p.v1) > 0.02) vec(c, blx + bs / 2, by - 26, blx + bs / 2 + p.v1 * kv, by - 26, '#ea580c', 2.4, 8);
+  text(c, `v₁ = ${fmt(p.v1, 2)} m/s`, blx + bs / 2, by - 44, '#ea580c', { bold: true, size: 12 });
+  if (Math.abs(p.v2) > 0.02) vec(c, X(p.x2) + st.L * k - 10, gy + 44, X(p.x2) + st.L * k - 10 + p.v2 * kv, gy + 44, '#2563eb', 2.4, 8);
+  text(c, `v₂ = ${fmt(p.v2, 2)} m/s`, X(p.x2) + st.L * k - 10, gy + 62, '#2563eb', { bold: true, size: 12 });
+  // 力：板对块的摩擦力 f，块对板的摩擦力 −f，地面摩擦力 fg，恒力 F
+  const kf = 40 / Math.max(st.mu1 * st.m * g, st.F, st.mu2 * (st.m + st.M) * g, 1);
+  if (st.t < run.T) {
+    const fx = blx + bs / 2, fyy = gy - bh - 4;
+    if (Math.abs(p.f) > 1e-3) {
+      vec(c, fx, fyy, fx + p.f * kf * 1.5, fyy, '#dc2626', 2.2, 7);
+      text(c, 'f', fx + p.f * kf * 1.5 + Math.sign(p.f) * 10, fyy - 8, '#dc2626', { bold: true, size: 12 });
+      vec(c, fx, gy - bh + 8, fx - p.f * kf * 1.5, gy - bh + 8, 'rgba(220,38,38,.6)', 2, 7);
+      text(c, "f′", fx - p.f * kf * 1.5 - Math.sign(p.f) * 12, gy - bh + 14, '#dc2626', { bold: true, size: 12 });
+    }
+    if (Math.abs(p.fg) > 1e-3) {
+      const gx = X(p.x2) + 30;
+      vec(c, gx, gy + 4, gx + p.fg * kf * 1.5, gy + 4, '#57534e', 2.2, 7);
+      text(c, '地面摩擦', gx + p.fg * kf * 1.5, gy + 30, '#57534e', { size: 11, bold: true });
+    }
+    if (st.F > 0) {
+      if (st.Fon === 'block') vec(c, blx + bs, by + bs / 2, blx + bs + st.F * kf * 1.5, by + bs / 2, '#f59e0b', 3, 9);
+      else vec(c, X(p.x2) + st.L * k, gy - bh / 2, X(p.x2) + st.L * k + st.F * kf * 1.5, gy - bh / 2, '#f59e0b', 3, 9);
+      const fx2 = st.Fon === 'block' ? blx + bs + st.F * kf * 1.5 : X(p.x2) + st.L * k + st.F * kf * 1.5;
+      text(c, `F = ${st.F} N`, fx2 + 8, st.Fon === 'block' ? by + bs / 2 : gy - bh / 2, '#b45309', { bold: true, size: 12, align: 'left' });
+    }
+  }
+  if (st.t >= run.T - 1e-9) {
+    const msg = { offR: '物块从木板右端滑落', offL: '物块从木板左端滑落', stop: '全部静止', uniform: '共速后一起匀速运动', time: '' }[run.end.type];
+    if (msg) text(c, msg, W / 2, 40, run.end.type === 'stop' ? '#16a34a' : '#dc2626', { bold: true, size: 15 });
+  }
+  text(c, `相对位移 Δx = ${fmt(p.x1 - p.x2, 2)} m（板长 ${st.L} m）`, 14, 20, '#7c3aed', { bold: true, size: 13, align: 'left' });
+}
+
+function drawBelt() {
+  const c = ctx, W = view.W, H = view.H, p = sample(st.t), t = Math.min(st.t, run.T);
+  const th = st.th * DEG, cs = Math.cos(th), sn = Math.sin(th);
+  const span = st.bL * cs, rise = st.bL * sn;
+  const k = Math.min((W - 160) / span, (H - 140) / Math.max(rise, 0.01), 70);
+  const x0 = (W - span * k) / 2, y0 = H / 2 - rise * k / 2 + 10;
+  const P = s => [x0 + s * cs * k, y0 + s * sn * k];
+  const R = 16;
+  const [ax, ay] = P(0), [bx, by] = P(st.bL);
+  // 传送带：上表面 + 下表面 + 两个轮子
+  const nx = sn, ny = -cs;   // 上表面法线（屏幕坐标）
+  c.lineWidth = 3; c.strokeStyle = '#374151';
+  c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+  c.beginPath(); c.moveTo(ax - nx * 2 * R, ay - ny * 2 * R); c.lineTo(bx - nx * 2 * R, by - ny * 2 * R); c.stroke();
+  [[ax, ay], [bx, by]].forEach(([x, y]) => {
+    const cx = x - nx * R, cy = y - ny * R;
+    c.beginPath(); c.arc(cx, cy, R - 3, 0, Math.PI * 2); c.fillStyle = '#e5e7eb'; c.fill(); c.strokeStyle = '#6b7280'; c.lineWidth = 2; c.stroke();
+    const ang = st.u * t / ((R - 3) / k);
+    line(c, cx, cy, cx + Math.cos(ang) * (R - 5), cy + Math.sin(ang) * (R - 5), '#6b7280', 2);
+  });
+  // 传送带上的标记随带子移动
+  const mstep = Math.max(0.5, Lab.niceStep(st.bL, 10));
+  const off = ((st.u * t) % mstep + mstep) % mstep;
+  for (let s = off; s <= st.bL; s += mstep) {
+    const [x, y] = P(s);
+    line(c, x, y, x - nx * 6, y - ny * 6, '#9ca3af', 2);
+  }
+  // 痕迹（随传送带一起移动）
+  const a = Math.max(0, p.qmin + st.u * t), b = Math.min(st.bL, p.qmax + st.u * t);
+  if (b > a + 1e-3) {
+    const [x1, y1] = P(a), [x2, y2] = P(b);
+    line(c, x1 - nx * 2, y1 - ny * 2, x2 - nx * 2, y2 - ny * 2, 'rgba(220,38,38,.75)', 5);
+  }
+  // 传送方向
+  if (Math.abs(st.u) > 0.01) {
+    const [mx, my] = P(st.bL / 2), dir = Math.sign(st.u);
+    vec(c, mx - nx * 2 * R - dir * cs * 40 + nx * 14, my - ny * 2 * R - dir * sn * 40 + ny * 14, mx - nx * 2 * R + dir * cs * 40 + nx * 14, my - ny * 2 * R + dir * sn * 40 + ny * 14, '#6b7280', 2, 8);
+    text(c, `u = ${fmt(Math.abs(st.u), 1)} m/s`, mx - nx * 2 * R + nx * 34, my - ny * 2 * R + ny * 34, '#6b7280', { size: 12, bold: true });
+  }
+  // 物块
+  const bs = 30, [px, py] = P(Math.max(0, Math.min(st.bL, p.s)));
+  c.save(); c.translate(px, py); c.rotate(th);
+  c.fillStyle = '#fdba74'; c.strokeStyle = '#ea580c'; c.lineWidth = 2;
+  c.fillRect(-bs / 2, -bs, bs, bs); c.strokeRect(-bs / 2, -bs, bs, bs);
+  c.restore();
+  const cx = px + nx * bs / 2, cy = py + ny * bs / 2;
+  if (Math.abs(p.v) > 0.02) vec(c, cx, cy + ny * 30 + 0, cx + p.v * 10 * cs, cy + ny * 30 + p.v * 10 * sn, '#ea580c', 2.4, 8);
+  text(c, `v = ${fmt(p.v, 2)} m/s`, cx + nx * 52, cy + ny * 52, '#ea580c', { bold: true, size: 12 });
+  // 摩擦力（作用在物块底面）
+  const A = st.t < run.T ? beltAcc(p.v) : null;
+  if (A && Math.abs(A.f) > 1e-3) {
+    const kf = 4;
+    vec(c, px, py, px + A.f * kf * cs, py + A.f * kf * sn, '#dc2626', 2.4, 8);
+    text(c, A.stick ? '静摩擦' : '滑动摩擦', px + A.f * kf * cs, py + A.f * kf * sn + 16, '#dc2626', { size: 11, bold: true });
+  }
+  if (st.th > 0) {
+    c.beginPath(); c.arc(ax, ay, 40, 0, th); c.strokeStyle = '#6b7280'; c.lineWidth = 1.2; c.stroke();
+    line(c, ax, ay, ax + 60, ay, 'rgba(0,0,0,.25)', 1, [4, 4]);
+    text(c, `θ = ${st.th}°`, ax + 52, ay + 18 * Math.max(0.6, sn * 2), '#374151', { size: 12, bold: true, align: 'left' });
+  }
+  if (st.t >= run.T - 1e-9) {
+    const msg = { offEnd: st.th > 0 ? '物块从底端离开' : '物块从右端离开', offStart: st.th > 0 ? '物块从顶端离开' : '物块从左端离开', time: '' }[run.end.type];
+    if (msg) text(c, `${msg}：t = ${fmt(run.T, 2)} s，v = ${fmt(p.v, 2)} m/s`, W / 2, 46, '#dc2626', { bold: true, size: 14 });
+  }
+  text(c, `痕迹长度 ${fmt(p.qmax - p.qmin, 2)} m · 相对路程 ${fmt(p.path, 2)} m`, 14, 20, '#dc2626', { bold: true, size: 13, align: 'left' });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W || !run) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2, t = Math.min(st.t, run.T);
+  chartView.begin();
+  const P = run.pts, p = sample(t);
+  if (st.mode === 'board') {
+    const s1 = P.map(q => [q.t, q.v1]), s2 = P.map(q => [q.t, q.v2]);
+    const vals = P.flatMap(q => [q.v1, q.v2]);
+    const ymin = Math.min(0, ...vals) * 1.1, ymax = Math.max(1, ...vals) * 1.15;
+    const pl = Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: Math.max(run.T, 0.5), ymin, ymax, xlabel: 't / s', ylabel: 'v / (m/s)', legendX: 80,
+      series: [{ pts: s1, color: '#ea580c', label: '物块' }, { pts: s2, color: '#2563eb', label: '木板' }],
+      points: [{ x: t, y: p.v1, color: '#ea580c' }, { x: t, y: p.v2, color: '#2563eb' }],
+    });
+    // 两线之间的面积 = 相对位移
+    c.beginPath();
+    const upto = P.filter(q => q.t <= t);
+    upto.forEach((q, i) => (i ? c.lineTo(pl.X(q.t), pl.Y(q.v1)) : c.moveTo(pl.X(q.t), pl.Y(q.v1))));
+    for (let i = upto.length - 1; i >= 0; i--) c.lineTo(pl.X(upto[i].t), pl.Y(upto[i].v2));
+    c.closePath(); c.fillStyle = 'rgba(124,58,237,.15)'; c.fill();
+    const rel = P.map(q => [q.t, q.x1 - q.x2]);
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: Math.max(run.T, 0.5), ymin: Math.min(0, ...rel.map(q => q[1])) - 0.2, ymax: Math.max(st.L * 1.1, ...rel.map(q => q[1])), xlabel: 't / s', ylabel: '相对位移 Δx / m（紫色面积）',
+      series: [{ pts: rel, color: '#7c3aed' }], hlines: [{ y: st.L, color: '#dc2626', label: `板长 L = ${st.L} m` }],
+      points: [{ x: t, y: p.x1 - p.x2, color: '#7c3aed' }],
+    });
+  } else {
+    const sv = P.map(q => [q.t, q.v]), su = [[0, st.u], [run.T, st.u]];
+    const vals = P.map(q => q.v).concat([st.u]);
+    const pl = Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: Math.max(run.T, 0.5), ymin: Math.min(0, ...vals) * 1.15 - 0.5, ymax: Math.max(1, ...vals) * 1.15, xlabel: 't / s', ylabel: 'v / (m/s)', legendX: 80,
+      series: [{ pts: sv, color: '#ea580c', label: '物块' }, { pts: su, color: '#6b7280', dash: [6, 4], label: '传送带' }],
+      points: [{ x: t, y: p.v, color: '#ea580c' }],
+    });
+    c.beginPath();
+    const upto = P.filter(q => q.t <= t);
+    upto.forEach((q, i) => (i ? c.lineTo(pl.X(q.t), pl.Y(q.v)) : c.moveTo(pl.X(q.t), pl.Y(q.v))));
+    if (upto.length) { c.lineTo(pl.X(upto[upto.length - 1].t), pl.Y(st.u)); c.lineTo(pl.X(0), pl.Y(st.u)); }
+    c.closePath(); c.fillStyle = 'rgba(220,38,38,.12)'; c.fill();
+    const ss = P.map(q => [q.t, q.s]);
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: Math.max(run.T, 0.5), ymin: Math.min(0, ...ss.map(q => q[1])), ymax: st.bL * 1.12, xlabel: 't / s', ylabel: st.th > 0 ? '离顶端的距离 s / m' : '离左端的距离 s / m',
+      series: [{ pts: ss, color: '#ea580c' }], hlines: [{ y: st.bL, color: '#dc2626', label: `L = ${st.bL} m` }],
+      points: [{ x: t, y: p.s, color: '#ea580c' }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  board: [
+    '共速是板块问题的转折点：共速前看相对滑动，共速后先假设一起运动，再用最大静摩擦力检验。',
+    '一起运动的条件：物块需要的摩擦力 f = ma ≤ μ₁mg。拉木板时不发生相对滑动的最大拉力 F = (μ₁ + μ₂)(M + m)g。',
+    'v–t 图中两条线围成的面积等于相对位移；物块恰好不滑落：相对位移 = 板长。',
+    '摩擦生热 Q = μ₁mg·Δx相对（只算块与板之间）；系统损失的机械能 = 所有摩擦生热之和。',
+    '地面光滑、不受外力时，块和板组成的系统动量守恒：mv₁₀ = (m + M)v共。',
+  ],
+  belt: [
+    '物块与传送带共速前受滑动摩擦力，方向与物块相对传送带的运动方向相反。',
+    '水平传送带共速后不受摩擦力，与传送带一起匀速运动。',
+    '倾斜传送带共速后：μ ≥ tanθ 时一起匀速；μ < tanθ 时继续加速，摩擦力反向，a = g(sinθ − μcosθ)。',
+    '摩擦生热 Q = μmg cosθ × 相对路程；痕迹长度在有往返时可能小于相对路程（痕迹会重叠）。',
+    '物块以反向速度滑上水平传送带：先减速到 0 再反向加速，返回时速度不超过 min(v₀, u)。',
+  ],
+};
+function updatePanel() {
+  $('boardBox').style.display = st.mode === 'board' ? '' : 'none';
+  $('beltBox').style.display = st.mode === 'belt' ? '' : 'none';
+  $('hint').textContent = st.mode === 'board' ? '物块从木板左端开始；红色 f 为板对块的摩擦力，f′ 为块对板的摩擦力' : '红色粗线为物块在传送带上留下的痕迹（随传送带移动）';
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  const t = Math.min(st.t, run.T), p = sample(t);
+  $('ttv').textContent = `${fmt(t, 2)} s`;
+  if (st.mode === 'board') {
+    $('tbl').innerHTML = `
+      <tr><td>物块 v₁ / 木板 v₂</td><td>${fmt(p.v1, 2)} / ${fmt(p.v2, 2)} m/s</td></tr>
+      <tr><td>物块位移 / 木板位移</td><td>${fmt(p.x1, 2)} / ${fmt(p.x2, 2)} m</td></tr>
+      <tr><td>相对位移 Δx</td><td>${fmt(p.x1 - p.x2, 2)} m</td></tr>
+      <tr><td>块板间生热 Q₁ = μ₁mg·Δx相对</td><td>${fmt(p.Q1, 2)} J</td></tr>
+      <tr><td>板与地面生热 Q₂</td><td>${fmt(p.Q2, 2)} J</td></tr>
+      <tr><td>动能 ½mv₁² + ½Mv₂²</td><td>${fmt(0.5 * st.m * p.v1 * p.v1 + 0.5 * st.M * p.v2 * p.v2, 2)} J</td></tr>`;
+    let html = '';
+    run.segs.forEach((s, i) => {
+      if (s.t1 - s.t0 < 1e-3) return;
+      const kind = s.key === 'stick' ? (Math.abs(s.a1) < 1e-6 && Math.abs(s.v1s) < 1e-4 ? '保持静止' : '一起运动（静摩擦）') : '相对滑动（滑动摩擦）';
+      html += `<div class="node"><span class="f">阶段 ${i + 1}：t = ${fmt(s.t0, 2)} ~ ${fmt(s.t1, 2)} s，${kind}</span><br>
+        物块 a₁ = <span class="v">${fmt(s.a1, 2)}</span> m/s²，木板 a₂ = <span class="v">${fmt(s.a2, 2)}</span> m/s²<br>
+        <span class="n">板对块摩擦力 ${fmt(s.f, 2)} N${st.mu2 > 0 ? `，地面对板摩擦力 ${fmt(s.fg, 2)} N` : ''}；末速度 v₁ = ${fmt(s.v1e, 2)}，v₂ = ${fmt(s.v2e, 2)} m/s</span></div><div class="link">↓</div>`;
+    });
+    const endMsg = { offR: '<span class="bad">物块从右端滑落</span>：相对位移达到板长', offL: '<span class="bad">物块从左端滑落</span>', stop: '<span class="good">最终全部静止</span>', uniform: '<span class="good">共速后一起匀速运动，物块没有滑落</span>', time: `${TMAX} s 内的运动` }[run.end.type];
+    html += `<div class="node">${endMsg}（t = ${fmt(run.T, 2)} s）</div>`;
+    if (st.mu2 === 0 && st.F === 0) {
+      const vc = (st.m * st.v10 + st.M * st.v20) / (st.m + st.M);
+      html += `<div class="node"><span class="f">动量守恒检验：mv₁₀ + Mv₂₀ = (m + M)v共</span><br><span class="v">v共 = ${fmt(vc, 3)} m/s</span>；生热 Q = ΔEk = <span class="v">${fmt(0.5 * st.m * st.v10 ** 2 + 0.5 * st.M * st.v20 ** 2 - 0.5 * (st.m + st.M) * vc * vc, 3)} J</span><br><span class="n">不滑落要求板长 L ≥ Q/(μ₁mg) = ${st.mu1 > 0 ? fmt((0.5 * st.m * st.v10 ** 2 + 0.5 * st.M * st.v20 ** 2 - 0.5 * (st.m + st.M) * vc * vc) / (st.mu1 * st.m * g), 3) + ' m' : '—'}</span></div>`;
+    }
+    if (st.F > 0) {
+      const Fc = st.Fon === 'board' ? (st.mu1 + st.mu2) * (st.m + st.M) * g : (st.mu1 * st.m * g - st.mu2 * (st.m + st.M) * g) * (st.m + st.M) / st.M;
+      html += `<div class="node"><span class="f">临界拉力（${st.Fon === 'board' ? '拉木板' : '拉物块'}）</span><br>${st.Fon === 'board'
+        ? `一起加速时物块最大加速度 μ₁g，整体：F − μ₂(M + m)g = (M + m)μ₁g<br>F临 = (μ₁ + μ₂)(M + m)g = <span class="v">${fmt(Fc, 2)} N</span>`
+        : `一起加速时木板最大加速度 (μ₁mg − μ₂(M + m)g)/M，整体 F临 = (M + m)·a板max<br>F临 = <span class="v">${Fc > 0 ? fmt(Fc, 2) + ' N' : '木板始终不动（μ₁mg ≤ μ₂(M + m)g）'}</span>`}<br>
+        当前 F = ${st.F} N：${Fc > 0 && st.F > Fc + 1e-9 ? '<span class="bad">超过临界，相对滑动</span>' : '<span class="good">不超过临界（起始同速时一起运动）</span>'}</div>`;
+    }
+    $('chain').innerHTML = html;
+  } else {
+    $('tbl').innerHTML = `
+      <tr><td>物块速度 v</td><td>${fmt(p.v, 2)} m/s</td></tr>
+      <tr><td>${st.th > 0 ? '离顶端距离' : '离左端距离'} s</td><td>${fmt(p.s, 2)} m</td></tr>
+      <tr><td>相对路程 ∫|v − u|dt</td><td>${fmt(p.path, 2)} m</td></tr>
+      <tr><td>痕迹长度</td><td>${fmt(p.qmax - p.qmin, 2)} m</td></tr>
+      <tr><td>生热 Q = μmg cosθ·相对路程（m = 1 kg）</td><td>${fmt(p.Q, 2)} J</td></tr>
+      <tr><td>tanθ 与 μ</td><td>${fmt(Math.tan(st.th * DEG), 3)} / ${st.mu}</td></tr>`;
+    let html = '';
+    run.segs.forEach((s, i) => {
+      if (s.t1 - s.t0 < 1e-3) return;
+      const kind = s.key === 'stick' ? '与传送带共速，静摩擦' : (Math.abs(s.f) > 0 ? `滑动摩擦力${s.f > 0 ? (st.th > 0 ? '沿斜面向下' : '向右') : (st.th > 0 ? '沿斜面向上' : '向左')}` : '');
+      const formula = s.key === 'stick' ? 'a = 0' : st.th > 0 ? `a = g(sinθ ${s.f > 0 ? '+' : '−'} μcosθ)` : `a = ${s.f > 0 ? '' : '−'}μg`;
+      html += `<div class="node"><span class="f">阶段 ${i + 1}：t = ${fmt(s.t0, 2)} ~ ${fmt(s.t1, 2)} s，${kind}</span><br>
+        ${formula} = <span class="v">${fmt(s.a, 2)} m/s²</span><br><span class="n">速度 ${fmt(s.vs, 2)} → ${fmt(s.ve, 2)} m/s，位置 ${fmt(s.ss, 2)} → ${fmt(s.se, 2)} m</span></div><div class="link">↓</div>`;
+    });
+    const endMsg = { offEnd: st.th > 0 ? '从底端离开' : '从右端离开', offStart: st.th > 0 ? '从顶端离开' : '从左端离开', rest: '停在传送带上', time: `${TMAX} s 内的运动` }[run.end.type];
+    html += `<div class="node"><span class="f">${endMsg}</span>：总时间 ${fmt(run.T, 2)} s，离开时 v = ${fmt(p.v, 2)} m/s<br>相对路程 ${fmt(run.pts[run.pts.length - 1].path, 2)} m，生热 Q = ${fmt(run.pts[run.pts.length - 1].Q, 2)} J（m = 1 kg）</div>`;
+    if (st.th > 0) html += `<div class="node"><span class="n">${st.mu >= Math.tan(st.th * DEG) ? 'μ ≥ tanθ：共速后与传送带一起匀速' : 'μ < tanθ：重力沿斜面的分力大于最大静摩擦力，共速后不能一起运动'}</span></div>`;
+    if (st.th === 37 || st.th === 53) html += '<div class="node"><span class="n">这里用精确的三角函数值；题目通常取 sin37° = 0.6、cos37° = 0.8，所以结果会有约 0.5% 的差别。</span></div>';
+    $('chain').innerHTML = html;
+  }
+}
+
+// ---------- 预设 ----------
+const PRESETS = {
+  board: [
+    ['滑上木板（地面光滑）', { m: 1, M: 2, mu1: 0.4, mu2: 0, v10: 6, v20: 0, F: 0, L: 6 }],
+    ['滑上木板（地面粗糙）', { m: 1, M: 2, mu1: 0.4, mu2: 0.1, v10: 6, v20: 0, F: 0, L: 6 }],
+    ['恰好不滑落', { m: 1, M: 2, mu1: 0.4, mu2: 0, v10: 6, v20: 0, F: 0, L: 3 }],
+    ['拉木板：临界拉力', { m: 1, M: 2, mu1: 0.4, mu2: 0.1, v10: 0, v20: 0, F: 16, Fon: 'board', L: 6 }],
+    ['拉物块', { m: 1, M: 2, mu1: 0.4, mu2: 0.1, v10: 0, v20: 0, F: 6, Fon: 'block', L: 6 }],
+    ['木板带物块（板先动）', { m: 1, M: 2, mu1: 0.2, mu2: 0.1, v10: 0, v20: 6, F: 0, L: 6 }],
+  ],
+  belt: [
+    ['水平：轻放物块', { th: 0, u: 4, bv0: 0, mu: 0.2, bL: 8 }],
+    ['水平：逆向滑上', { th: 0, u: -4, bv0: 6, mu: 0.2, bL: 12 }],
+    ['倾斜向下：μ < tanθ', { th: 37, u: 10, bv0: 0, mu: 0.5, bL: 16 }],
+    ['倾斜向上：μ > tanθ', { th: 30, u: -4, bv0: 0, mu: 0.9, bL: 8 }],
+  ],
+};
+const IDS = { m: 'm', M: 'M', mu1: 'mu1', mu2: 'mu2', v10: 'v10', v20: 'v20', F: 'F', L: 'L', th: 'th', u: 'u', bv0: 'bv0', mu: 'mu', bL: 'bL' };
+function applyPreset(o) {
+  for (const [k, v] of Object.entries(o)) {
+    st[k] = v;
+    if (IDS[k]) Lab.setRange(IDS[k], v);
+    if (k === 'Fon') Lab.setRadio('Fon', v);
+  }
+  reset(true);
+}
+function showPresets() {
+  $('presets').innerHTML = '';
+  PRESETS[st.mode].forEach(([name, o]) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.addEventListener('click', () => applyPreset(o));
+    $('presets').appendChild(b);
+  });
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function reset(autoplay) {
+  compute();
+  st.t = 0; $('tt').value = 0;
+  anim.stop();
+  if (autoplay) { anim.start(); $('play').textContent = '⏸ 暂停'; } else $('play').textContent = '▶ 开始';
+  render();
+}
+const anim = Lab.loop(dt => {
+  st.t = Math.min(run.T, st.t + dt * st.speed);
+  $('tt').value = Math.round(st.t / run.T * 1000);
+  render();
+  if (st.t >= run.T) { $('play').textContent = '▶ 重新播放'; return false; }
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.t >= run.T - 1e-9) st.t = 0;
+  $('play').textContent = '⏸ 暂停';
+  anim.start();
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.5 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.t = +$('tt').value / 1000 * run.T; render(); });
+
+const upd = k => v => { st[k] = v; reset(false); };
+Lab.range('m', v => `${fmt(v, 1)} kg`, upd('m'));
+Lab.range('M', v => `${fmt(v, 1)} kg`, upd('M'));
+Lab.range('mu1', v => fmt(v, 2), upd('mu1'));
+Lab.range('mu2', v => fmt(v, 2), upd('mu2'));
+Lab.range('v10', v => `${fmt(v, 1)} m/s`, upd('v10'));
+Lab.range('v20', v => `${fmt(v, 1)} m/s`, upd('v20'));
+Lab.range('F', v => `${fmt(v, 1)} N`, upd('F'));
+Lab.range('L', v => `${fmt(v, 1)} m`, upd('L'));
+Lab.range('th', v => `${v}°`, upd('th'));
+Lab.range('u', v => `${fmt(v, 1)} m/s`, upd('u'));
+Lab.range('bv0', v => `${fmt(v, 1)} m/s`, upd('bv0'));
+Lab.range('mu', v => fmt(v, 2), upd('mu'));
+Lab.range('bL', v => `${fmt(v, 1)} m`, upd('bL'));
+Lab.radios('Fon', v => { st.Fon = v; reset(false); });
+Lab.radios('mode', m => { st.mode = m; showPresets(); applyPreset(PRESETS[m][0][1]); });
+showPresets();
+reset(false);
+</script>
+</body>
+</html>

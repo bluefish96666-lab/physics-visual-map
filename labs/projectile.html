@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抛体运动 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>抛体运动</b><span class="crumb">必修第二册 · 第五章 抛体运动</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">拖动橙色抛出点改变高度，拖动红色箭头尖端改变初速度</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">平抛运动 = <b>水平方向匀速直线运动</b> + <b>竖直方向自由落体运动</b>。打开频闪：上方的影子间距相等，左侧的影子间距按 1 : 3 : 5 : … 增大。</div>
+
+    <h2>运动类型</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="flat" checked>平抛</label>
+      <label class="chk"><input type="radio" name="mode" value="incline">斜面上平抛</label>
+      <label class="chk"><input type="radio" name="mode" value="oblique">斜抛</label>
+    </div>
+
+    <h2>条件（g 取 10 m/s²）</h2>
+    <div class="row">初速度 v₀ <input type="range" id="v0" min="1" max="20" step="0.5" value="10"><span class="val" id="v0v"></span></div>
+    <div class="row">抛出高度 h <input type="range" id="h" min="0" max="20" step="0.5" value="20"><span class="val" id="hv"></span></div>
+    <div class="row" id="phiRow">抛射角 φ <input type="range" id="phi" min="0" max="85" step="1" value="45"><span class="val" id="phiv"></span></div>
+    <div class="row" id="thRow">斜面倾角 θ <input type="range" id="th" min="15" max="60" step="1" value="37"><span class="val" id="thv"></span></div>
+
+    <div id="wallBox">
+      <div class="row"><label class="chk"><input type="checkbox" id="wall">前方有网（墙）：求 v₀ 的范围</label></div>
+      <div class="row wallRow">网到抛出点水平距离 s <input type="range" id="ws" min="2" max="30" step="0.5" value="10"><span class="val" id="wsv"></span></div>
+      <div class="row wallRow">网高 H <input type="range" id="wh" min="0.5" max="19" step="0.1" value="3.2"><span class="val" id="whv"></span></div>
+      <div class="row wallRow">网后场地长 L <input type="range" id="wl" min="2" max="30" step="0.5" value="10"><span class="val" id="wlv"></span></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid">
+      <button data-preset="time">落地时间只看高度</button>
+      <button data-preset="net">擦网与出界临界</button>
+      <button data-preset="incline">斜面顶端平抛</button>
+      <button data-preset="range">斜抛射程与 45°</button>
+    </div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 抛出</button><button id="slow">慢放 0.5×</button></div>
+    <div class="row">时刻 t <input type="range" id="tt" min="0" max="1000" step="1" value="1000"><span class="val" id="ttv"></span></div>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="strobe" checked>频闪与投影</label>
+      <label class="chk"><input type="checkbox" id="vecs" checked>速度、位移分解</label>
+    </div>
+
+    <h2>当前时刻</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul>
+        <li>平抛运动的时间 t = √(2h/g) 只由高度决定，与 v₀ 无关；水平射程 x = v₀√(2h/g) 由 v₀ 和 h 共同决定。</li>
+        <li>任意时刻速度偏角 α 与位移偏角 θ 满足 tanα = 2tanθ。</li>
+        <li>速度的反向延长线一定通过此时水平位移的中点。</li>
+        <li>相等时间内速度变化量相同：Δv = gΔt，方向竖直向下。</li>
+        <li>从斜面顶端平抛又落回斜面：t = 2v₀tanθ/g；落到斜面时速度方向与斜面的夹角与 v₀ 无关。</li>
+        <li>速度方向与斜面平行时离斜面最远，这一时刻恰好是飞行时间的一半。</li>
+        <li>斜抛运动最高点速度不为零，等于 v₀cosφ；从同一水平面抛出、落回时，φ = 45° 射程最大，互余的两个角射程相同。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const g = 10, DEG = Math.PI / 180;
+const st = { mode: 'flat', v0: 10, h: 20, phi: 45, th: 37, t: 0, speed: 1, strobe: true, vecs: true, wall: false, ws: 10, wh: 3.2, wl: 10 };
+const wallOn = () => st.wall && st.mode === 'flat';
+let G = null, lockScale = null;
+
+function traj() {
+  const phi = st.mode === 'oblique' ? st.phi * DEG : 0;
+  const vx = st.v0 * Math.cos(phi), vy0 = st.v0 * Math.sin(phi);
+  const tanT = Math.tan(st.th * DEG);
+  let T = (vy0 + Math.sqrt(vy0 * vy0 + 2 * g * st.h)) / g, onIncline = false;
+  if (st.mode === 'incline') {
+    const ti = 2 * (vy0 + vx * tanT) / g;
+    if (vx * ti <= st.h / tanT + 1e-9) { T = ti; onIncline = true; }
+  }
+  let hitWall = false;
+  if (wallOn() && vx * T > st.ws) {
+    const tw = st.ws / vx;
+    if (st.h - g * tw * tw / 2 < st.wh) { T = tw; hitWall = true; }
+  }
+  return { vx, vy0, T, onIncline, tanT, phi, hitWall };
+}
+const P = (tr, t) => [tr.vx * t, st.h + tr.vy0 * t - g * t * t / 2];
+const V = (tr, t) => [tr.vx, tr.vy0 - g * t];
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+
+function layout(tr) {
+  const W = view.W, H = view.H;
+  const ox = 96, oy = H - 56, mR = 40, mT = 50;
+  const xland = tr.vx * tr.T;
+  const apex = st.h + (tr.vy0 > 0 ? tr.vy0 * tr.vy0 / (2 * g) : 0);
+  let xspan = Math.max(10, xland * 1.12, wallOn() ? (st.ws + st.wl) * 1.08 : 0);
+  let yspan = Math.max(6, apex * 1.15), ybase = 0;
+  if (st.mode === 'incline') {
+    // 只显示飞行区域附近的一段斜面
+    const drop = st.h - P(tr, tr.T)[1];
+    xspan = Math.max(8, xland * 1.5);
+    yspan = Math.min(st.h, Math.max(6, drop * 1.5, xspan * tr.tanT * 0.8)) * 1.1;
+    ybase = Math.max(0, st.h - yspan);
+  }
+  const sc = lockScale ? lockScale.sc : Math.min((W - ox - mR) / xspan, (oy - mT) / (yspan || 1));
+  if (lockScale) ybase = lockScale.ybase;
+  return { ox, oy, sc, ybase, X: x => ox + x * sc, Y: y => oy - (y - ybase) * sc };
+}
+
+function angleArc(c, x, y, a0, a1, r, color, label) {
+  c.beginPath();
+  c.arc(x, y, r, -a0, -a1, a1 > a0);
+  c.strokeStyle = color; c.lineWidth = 1.6; c.stroke();
+  const m = (a0 + a1) / 2;
+  text(c, label, x + Math.cos(m) * (r + 13), y - Math.sin(m) * (r + 13), color, { bold: true, size: 13 });
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, tr = traj();
+  view.begin();
+  const L = layout(tr), { X, Y, sc } = L;
+  G = { L, tr };
+  const t = Math.min(st.t, tr.T);
+
+  // 网格
+  const step = Lab.niceStep((W - L.ox) / sc, 8);
+  for (let x = 0; X(x) < W; x += step) {
+    line(c, X(x), L.oy, X(x), 20, '#f3f4f6');
+    text(c, fmt(x, 0), X(x), L.oy + 14, '#9ca3af', { size: 11, halo: false });
+  }
+  for (let y = Math.ceil((L.ybase + 0.01) / step) * step; Y(y) > 20; y += step) {
+    line(c, L.ox, Y(y), W, Y(y), '#f3f4f6');
+    text(c, fmt(y, 0), L.ox - 50, Y(y), '#9ca3af', { size: 11, halo: false });
+  }
+  text(c, 'x / m', W - 10, L.oy + 30, '#9ca3af', { size: 11, align: 'right', halo: false });
+
+  // 地面与斜面
+  const yg = Y(0), yb = Math.min(yg, L.oy);
+  if (yg <= view.H) {
+    c.fillStyle = '#e7e5e4';
+    c.fillRect(0, yg, W, view.H - yg);
+    line(c, 0, yg, W, yg, '#78716c', 2);
+  }
+  if (st.mode === 'incline') {
+    const xf = st.h / tr.tanT;
+    c.beginPath(); c.moveTo(X(0), Y(st.h)); c.lineTo(X(xf), Y(0)); c.lineTo(X(0), Y(0)); c.closePath();
+    c.fillStyle = '#f5f5f4'; c.fill();
+    line(c, X(0), Y(st.h), X(xf), Y(0), '#78716c', 2);
+    angleArc(c, X(xf), Y(0), Math.PI - Math.atan(tr.tanT), Math.PI, 26, '#57534e', 'θ');
+  } else if (st.h > 0) {
+    c.fillStyle = '#e7e5e4'; c.fillRect(X(0) - 14, Y(st.h), 14, st.h * sc);
+    line(c, X(0) - 14, Y(st.h), X(0), Y(st.h), '#78716c', 2);
+    line(c, X(0), Y(st.h), X(0), Y(0), '#78716c', 1.5);
+  }
+
+  if (wallOn()) {
+    c.fillStyle = 'rgba(55,65,81,.75)';
+    c.fillRect(X(st.ws) - 3, Y(st.wh), 6, st.wh * sc);
+    text(c, `网 H = ${fmt(st.wh, 1)} m`, X(st.ws) + 8, Y(st.wh / 2), '#374151', { size: 12, bold: true, align: 'left' });
+    const xe = st.ws + st.wl, tf = Math.sqrt(2 * st.h / g);
+    const crit = [[st.h > st.wh ? st.ws / Math.sqrt(2 * (st.h - st.wh) / g) : 0, '擦网'], [xe / tf, '压线']];
+    for (const [v, name] of crit) {
+      if (!v) continue;
+      c.save(); c.setLineDash([3, 4]); c.beginPath();
+      for (let k = 0; k <= 60; k++) { const tk = tf * k / 60; k ? c.lineTo(X(v * tk), Y(st.h - g * tk * tk / 2)) : c.moveTo(X(0), Y(st.h)); }
+      c.strokeStyle = '#0d9488'; c.lineWidth = 1.5; c.stroke(); c.restore();
+    }
+    text(c, `青色虚线：两条临界轨迹（擦网 ${crit[0][0] ? fmt(crit[0][0], 2) + ' m/s' : '—'}，压线 ${fmt(crit[1][0], 2)} m/s）`, L.ox + 6, 36, '#0d9488', { size: 12, bold: true, align: 'left' });
+    line(c, X(st.ws), L.oy + 5, X(xe), L.oy + 5, '#16a34a', 4);
+    line(c, X(xe), L.oy - 8, X(xe), L.oy + 8, '#16a34a', 2);
+    text(c, '界内', (X(st.ws) + X(xe)) / 2, L.oy + 28, '#16a34a', { size: 12, bold: true });
+  }
+
+  // 整条轨迹（虚线）与已经走过的部分
+  const pts = [];
+  for (let k = 0; k <= 200; k++) pts.push(P(tr, tr.T * k / 200));
+  c.save(); c.setLineDash([5, 5]); c.beginPath();
+  pts.forEach(([x, y], k) => (k ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y))));
+  c.strokeStyle = '#d1d5db'; c.lineWidth = 1.5; c.stroke(); c.restore();
+  c.beginPath();
+  for (let k = 0; k <= 200; k++) { const [x, y] = P(tr, t * k / 200); k ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y)); }
+  c.strokeStyle = '#f97316'; c.lineWidth = 2.2; c.stroke();
+
+  // 频闪照片与两个方向的投影
+  if (st.strobe) {
+    const dts = tr.T <= 2.2 ? 0.1 : 0.2, px = L.ox - 26, py = Y(st.h);
+    line(c, px, yb, px, py - 10, '#e5e7eb', 1);
+    for (let k = 0; k * dts <= t + 1e-9; k++) {
+      const [x, y] = P(tr, k * dts);
+      line(c, X(x), Y(y), X(x), py, 'rgba(37,99,235,.18)', 1, [3, 3]);
+      line(c, X(x), Y(y), px, Y(y), 'rgba(22,163,74,.18)', 1, [3, 3]);
+      dot(c, X(x), py, 3.5, '#93c5fd', null);
+      dot(c, px, Y(y), 3.5, '#86efac', null);
+      dot(c, X(x), Y(y), 4, '#fdba74', '#fff', 1);
+    }
+    text(c, `频闪间隔 ${dts} s`, W - 14, 40, '#6b7280', { size: 12, align: 'right' });
+    text(c, '水平：匀速', X(P(tr, t)[0]) + 10, py - 12, '#2563eb', { size: 12, bold: true, align: 'left' });
+    text(c, st.mode === 'oblique' ? '竖直：竖直上抛' : '竖直：自由落体', px - 4, yb - 12, '#16a34a', { size: 12, bold: true, align: 'center' });
+  }
+
+  // 当前位置的速度与位移
+  const [x, y] = P(tr, t), [vx, vy] = V(tr, t);
+  const kv = Math.min(5, 110 / Math.max(st.v0, Math.hypot(tr.vx, tr.vy0 - g * tr.T), 1));
+  if (st.vecs && t > 0) {
+    line(c, X(0), Y(st.h), X(x), Y(st.h), 'rgba(124,58,237,.6)', 1.2, [4, 4]);
+    line(c, X(x), Y(st.h), X(x), Y(y), 'rgba(124,58,237,.6)', 1.2, [4, 4]);
+    vec(c, X(0), Y(st.h), X(x), Y(y), '#7c3aed', 2, 8);
+    const th = Math.atan2(y - st.h, x);
+    if (x > 0.3) angleArc(c, X(0), Y(st.h), 0, th, 34, '#7c3aed', 'θ');
+    // 速度反向延长线与抛出点水平线的交点
+    if (vy < -0.05 && y < st.h - 0.05) {
+      const s = (y - st.h) / vy, xm = x - vx * s;
+      line(c, X(x), Y(y), X(xm), Y(st.h), 'rgba(220,38,38,.5)', 1.2, [6, 4]);
+      dot(c, X(xm), Y(st.h), 4, '#dc2626');
+      if (st.mode !== 'oblique') text(c, 'x/2', X(xm) + 4, Y(st.h) + 16, '#dc2626', { bold: true, size: 12, align: 'left' });
+    }
+    vec(c, X(x), Y(y), X(x) + vx * kv, Y(y), '#2563eb', 2, 7);
+    vec(c, X(x), Y(y), X(x), Y(y) - vy * kv, '#16a34a', 2, 7);
+    line(c, X(x) + vx * kv, Y(y), X(x) + vx * kv, Y(y) - vy * kv, 'rgba(0,0,0,.25)', 1, [3, 3]);
+    line(c, X(x), Y(y) - vy * kv, X(x) + vx * kv, Y(y) - vy * kv, 'rgba(0,0,0,.25)', 1, [3, 3]);
+    text(c, 'vₓ', X(x) + vx * kv + 10, Y(y) + 10, '#2563eb', { bold: true, size: 13 });
+    text(c, 'v_y', X(x) - 16, Y(y) - vy * kv / 2, '#16a34a', { bold: true, size: 13 });
+    const a = Math.atan2(vy, vx);
+    if (Math.abs(a) > 0.05) angleArc(c, X(x), Y(y), 0, a, 22, '#dc2626', 'α');
+  }
+  if (t > 0 || !st.vecs) vec(c, X(x), Y(y), X(x) + vx * kv, Y(y) - vy * kv, '#dc2626', 2.8, 10);
+
+  // 斜面上离斜面最远的位置
+  if (st.mode === 'incline' && tr.onIncline && t >= tr.T / 2) {
+    const [xm, ym] = P(tr, tr.T / 2), cs = Math.cos(st.th * DEG), sn = Math.sin(st.th * DEG);
+    const d = (ym - (st.h - xm * tr.tanT)) * cs;
+    const fx = xm + d * sn, fy = ym - d * cs;
+    line(c, X(xm), Y(ym), X(fx), Y(fy), '#0d9488', 1.5, [4, 3]);
+    dot(c, X(xm), Y(ym), 5, '#0d9488');
+    text(c, '离斜面最远（t/2）', X(xm) + 10, Y(ym) - 14, '#0d9488', { bold: true, size: 12, align: 'left' });
+  }
+
+  dot(c, X(x), Y(y), 8, '#f97316', '#fff', 2);
+  // 抛出点（可拖动）与初速度箭头尖端
+  dot(c, X(0), Y(st.h), 6, '#ea580c', '#fff', 2);
+  const tip = [X(0) + tr.vx * kv, Y(st.h) - tr.vy0 * kv];
+  vec(c, X(0), Y(st.h), tip[0], tip[1], 'rgba(220,38,38,.55)', 2.2, 9);
+  dot(c, tip[0], tip[1], 5, '#fff', '#dc2626', 2);
+  text(c, `v₀ = ${fmt(st.v0, 1)} m/s`, tip[0] + 8, tip[1] - 14, '#dc2626', { bold: true, size: 12, align: 'left' });
+  G.kv = kv; G.tip = tip;
+
+  text(c, `t = ${fmt(t, 2)} s`, W - 14, 18, '#111827', { bold: true, size: 15, align: 'right' });
+  if (t >= tr.T - 1e-9 && tr.hitWall) text(c, '撞网！', X(x) - 12, Y(y) - 18, '#b91c1c', { bold: true, size: 14, align: 'right' });
+  else if (t >= tr.T - 1e-9 && wallOn() && tr.vx * tr.T > st.ws + st.wl) text(c, `出界！x = ${fmt(tr.vx * tr.T, 2)} m`, X(x), Y(0) - 18, '#b91c1c', { bold: true, size: 13 });
+  else if (t >= tr.T - 1e-9) text(c, `落点 x = ${fmt(tr.vx * tr.T, 2)} m`, X(tr.vx * tr.T), Y(P(tr, tr.T)[1]) + (st.mode === 'incline' && tr.onIncline ? 22 : -18), '#ea580c', { bold: true, size: 12 });
+}
+
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    if (!G) return null;
+    if (Math.hypot(px - G.tip[0], py - G.tip[1]) < rad) return 'tip';
+    if (Math.hypot(px - G.L.X(0), py - G.L.Y(st.h)) < rad) return 'h';
+    return null;
+  },
+  move(w, px, py) {
+    lockScale = { sc: G.L.sc, ybase: G.L.ybase };
+    const { L } = G;
+    if (w === 'h') {
+      st.h = Math.max(st.mode === 'oblique' ? 0 : 1, Math.min(20, Math.round(((L.oy - py) / L.sc + L.ybase) * 2) / 2));
+      Lab.setRange('h', st.h);
+    } else {
+      const dx = (px - L.X(0)) / G.kv, dy = (L.Y(st.h) - py) / G.kv;
+      if (st.mode === 'oblique') {
+        st.v0 = Math.max(1, Math.min(20, Math.round(Math.hypot(dx, dy) * 2) / 2));
+        st.phi = Math.max(0, Math.min(85, Math.round(Math.atan2(dy, dx) / DEG)));
+        Lab.setRange('phi', st.phi);
+      } else st.v0 = Math.max(1, Math.min(20, Math.round(dx * 2) / 2));
+      Lab.setRange('v0', st.v0);
+    }
+    showAll();
+  },
+  end() { lockScale = null; render(); },
+});
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, tr = traj(), W = chartView.W, H = chartView.H, t = Math.min(st.t, tr.T);
+  chartView.begin();
+  const n = 120, vxs = [], vys = [], xs = [], ds = [];
+  for (let k = 0; k <= n; k++) {
+    const tk = tr.T * k / n, [x, y] = P(tr, tk), [, vy] = V(tr, tk);
+    vxs.push([tk, tr.vx]); vys.push([tk, vy]); xs.push([tk, x]); ds.push([tk, st.h - y]);
+  }
+  const vmax = Math.max(st.v0, Math.abs(tr.vy0 - g * tr.T), 1) * 1.15;
+  const [x, y] = P(tr, t), [, vy] = V(tr, t);
+  const half = W / 2;
+  Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: Math.max(tr.T, 0.1), ymin: -vmax, ymax: vmax, xlabel: 't / s', ylabel: 'v / (m/s)，向上为正', legendX: 120,
+    series: [{ pts: vxs, color: '#2563eb', label: 'vₓ' }, { pts: vys, color: '#16a34a', label: 'v_y' }],
+    points: [{ x: t, y: tr.vx, color: '#2563eb' }, { x: t, y: vy, color: '#16a34a' }],
+  });
+  const dmax = Math.max(tr.vx * tr.T, ...ds.map(p => Math.abs(p[1])), 1) * 1.15;
+  const dmin = Math.min(0, ...ds.map(p => p[1])) * 1.15;
+  Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: Math.max(tr.T, 0.1), ymin: dmin, ymax: dmax, xlabel: 't / s', ylabel: '位移 / m', legendX: 70,
+    series: [{ pts: xs, color: '#2563eb', label: '水平位移 x' }, { pts: ds, color: '#16a34a', label: '下落高度 y（向下为正）' }],
+    points: [{ x: t, y: x, color: '#2563eb' }, { x: t, y: st.h - y, color: '#16a34a' }],
+  });
+}
+
+// ---------- 读数 ----------
+function updatePanel() {
+  const tr = traj(), t = Math.min(st.t, tr.T);
+  const [x, y] = P(tr, t), [vx, vy] = V(tr, t);
+  const a = Math.atan2(-vy, vx) / DEG, th = x > 1e-9 ? Math.atan2(st.h - y, x) / DEG : 0;
+  $('ttv').textContent = `${fmt(t, 2)} s`;
+  $('tbl').innerHTML = `
+    <tr><td>水平位移 x = v₀t</td><td>${fmt(x, 2)} m</td></tr>
+    <tr><td>下落高度 y = ½gt²</td><td>${fmt(st.h - y, 2)} m</td></tr>
+    <tr><td>vₓ / v_y（向上为正）</td><td>${fmt(vx, 2)} / ${fmt(vy, 2)} m/s</td></tr>
+    <tr><td>速率 v = √(vₓ² + v_y²)</td><td>${fmt(Math.hypot(vx, vy), 2)} m/s</td></tr>
+    <tr><td>速度偏角 α（向下为正）</td><td>${fmt(a, 1)}°</td></tr>
+    <tr><td>位移偏角 θ（向下为正）</td><td>${fmt(th, 1)}°</td></tr>`;
+
+  const T = tr.T, X = tr.vx * T;
+  let html;
+  if (wallOn()) {
+    const okH = st.h > st.wh;
+    const vmin = okH ? st.ws / Math.sqrt(2 * (st.h - st.wh) / g) : Infinity;
+    const tf = Math.sqrt(2 * st.h / g), vmax = (st.ws + st.wl) / tf;
+    const res = tr.hitWall ? '<span class="bad">撞网：v₀ 太小</span>' : tr.vx * tr.T > st.ws + st.wl ? '<span class="bad">出界：v₀ 太大</span>' : '<span class="good">过网且落在界内</span>';
+    html = `
+      <div class="node"><span class="f">临界一：恰好擦网</span><br>下落 h − H 用时 t₁ = √(2(h − H)/g)，此时水平位移恰为 s<br>
+        <span class="v">${okH ? `t₁ = ${fmt(Math.sqrt(2 * (st.h - st.wh) / g), 3)} s，v₀min = s/t₁ = ${fmt(vmin, 2)} m/s` : '抛出点不高于网，无论多快都过不了网'}</span></div>
+      <div class="link">↓</div>
+      <div class="node"><span class="f">临界二：恰好落在底线</span><br>下落 h 用时 t₂ = √(2h/g)，水平位移恰为 s + L<br>
+        <span class="v">t₂ = ${fmt(tf, 3)} s，v₀max = (s + L)/t₂ = ${fmt(vmax, 2)} m/s</span></div>
+      <div class="link">↓</div>
+      <div class="node"><span class="f">${vmin <= vmax ? `${fmt(vmin, 2)} m/s ≤ v₀ ≤ ${fmt(vmax, 2)} m/s` : '无解：擦网速度已经超过不出界的最大速度'}</span><br>当前 v₀ = ${fmt(st.v0, 1)} m/s：${res}<br>
+        <span class="n">解题关键：画出两条临界轨迹，分别抓住"擦网"和"压线"两个位置。</span></div>`;
+  } else if (st.mode === 'flat') {
+    html = `
+      <div class="node"><span class="f">竖直方向：h = ½gt² → t = √(2h/g)</span><br><span class="v">√(2 × ${fmt(st.h, 1)} ÷ 10) = ${fmt(T, 3)} s</span><br><span class="n">与 v₀ 无关：改变 v₀，落地时间不变。</span></div>
+      <div class="link">↓ 两个方向的运动时间相同</div>
+      <div class="node"><span class="f">水平方向：x = v₀t</span><br><span class="v">${fmt(st.v0, 1)} × ${fmt(T, 3)} = ${fmt(X, 2)} m</span></div>
+      <div class="link">↓ 落地速度</div>
+      <div class="node"><span class="f">v_y = gt，tanα = v_y/v₀</span><br><span class="v">v_y = ${fmt(g * T, 2)} m/s，v = ${fmt(Math.hypot(st.v0, g * T), 2)} m/s，α = ${fmt(Math.atan2(g * T, st.v0) / DEG, 1)}°</span></div>`;
+  } else if (st.mode === 'incline') {
+    const tn = tr.tanT;
+    html = tr.onIncline ? `
+      <div class="node"><span class="f">落回斜面：位移偏角等于斜面倾角 θ</span><br>tanθ = (½gt²)/(v₀t) → t = 2v₀tanθ/g<br><span class="v">2 × ${fmt(st.v0, 1)} × ${fmt(tn, 3)} ÷ 10 = ${fmt(T, 3)} s</span></div>
+      <div class="link">↓ tanα = 2tanθ</div>
+      <div class="node"><span class="f">落到斜面时速度偏角 α 只由 θ 决定</span><br><span class="v">tanα = 2 × ${fmt(tn, 3)} = ${fmt(2 * tn, 3)}，α = ${fmt(Math.atan(2 * tn) / DEG, 1)}°</span><br><span class="n">速度与斜面夹角 α − θ = ${fmt(Math.atan(2 * tn) / DEG - st.th, 1)}°，改变 v₀ 也不变。</span></div>
+      <div class="link">↓ 速度平行于斜面时</div>
+      <div class="node"><span class="f">离斜面最远：v_y/v₀ = tanθ → t = v₀tanθ/g = T/2</span><br><span class="v">${fmt(T / 2, 3)} s</span></div>`
+      : `<div class="node"><span class="f">v₀ 太大，小球飞过了斜面底端</span><br>落到水平地面上，时间由高度决定：t = √(2h/g) = ${fmt(T, 3)} s<br><span class="n">临界：恰好落在斜面底端时 v₀ = (h/tanθ)/√(2h/g) = ${fmt(st.h / tn / Math.sqrt(2 * st.h / g), 2)} m/s</span></div>`;
+  } else {
+    const vy0 = tr.vy0, tUp = vy0 / g, H = st.h + vy0 * vy0 / (2 * g);
+    html = `
+      <div class="node"><span class="f">分解初速度</span><br><span class="v">vₓ = v₀cosφ = ${fmt(tr.vx, 2)} m/s，v_y0 = v₀sinφ = ${fmt(vy0, 2)} m/s</span></div>
+      <div class="link">↓ 竖直方向是竖直上抛</div>
+      <div class="node"><span class="f">上升时间 t₁ = v_y0/g，最大高度 H = h + v_y0²/(2g)</span><br><span class="v">t₁ = ${fmt(tUp, 3)} s，H = ${fmt(H, 2)} m；最高点速度 = vₓ = ${fmt(tr.vx, 2)} m/s（不是 0）</span></div>
+      <div class="link">↓ 落地</div>
+      <div class="node"><span class="f">总时间 T、射程 X = vₓT</span><br><span class="v">T = ${fmt(T, 3)} s，X = ${fmt(X, 2)} m</span>` +
+      (st.h === 0 ? `<br><span class="n">从地面抛出：X = v₀²sin2φ/g；${st.phi === 45 ? '' : `与 ${90 - st.phi}° 射程相同，`}45° 时最大（${fmt(st.v0 * st.v0 / g, 2)} m）。</span>` : '<br><span class="n">把 h 调到 0，可以验证 45° 射程最大、互余角射程相同。</span>') + '</div>';
+  }
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function showAll() { st.t = traj().T; Lab.setRange('tt', 1000); anim.stop(); $('play').textContent = '▶ 抛出'; render(); }
+
+const anim = Lab.loop(dt => {
+  const T = traj().T;
+  st.t = Math.min(T, st.t + dt * st.speed);
+  $('tt').value = Math.round(st.t / T * 1000);
+  render();
+  if (st.t >= T) { $('play').textContent = '▶ 再抛一次'; return false; }
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.t >= traj().T - 1e-9) st.t = 0;
+  $('play').textContent = '⏸ 暂停';
+  anim.start();
+});
+$('slow').addEventListener('click', () => {
+  st.speed = st.speed === 1 ? 0.5 : 1;
+  $('slow').classList.toggle('on', st.speed !== 1);
+});
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.t = +$('tt').value / 1000 * traj().T; render(); });
+$('strobe').addEventListener('change', e => { st.strobe = e.target.checked; render(); });
+$('vecs').addEventListener('change', e => { st.vecs = e.target.checked; render(); });
+
+function showRows() {
+  $('phiRow').style.display = st.mode === 'oblique' ? '' : 'none';
+  $('thRow').style.display = st.mode === 'incline' ? '' : 'none';
+  $('wallBox').style.display = st.mode === 'flat' ? '' : 'none';
+  document.querySelectorAll('.wallRow').forEach(r => { r.style.display = st.wall ? '' : 'none'; });
+  $('h').min = st.mode === 'oblique' ? 0 : 1;
+}
+function setMode(m, h, v0) {
+  st.mode = m; st.h = h; st.v0 = v0;
+  Lab.setRadio('mode', m); Lab.setRange('h', h); Lab.setRange('v0', v0);
+  showRows(); showAll();
+}
+Lab.radios('mode', m => {
+  if (m === 'oblique') setMode(m, 0, 15);
+  else if (m === 'incline') setMode(m, 20, 8);
+  else setMode(m, 20, 10);
+});
+$('wall').addEventListener('change', e => { st.wall = e.target.checked; showRows(); showAll(); });
+Lab.range('ws', v => `${fmt(v, 1)} m`, v => { st.ws = v; showAll(); });
+Lab.range('wh', v => `${fmt(v, 1)} m`, v => { st.wh = v; showAll(); });
+Lab.range('wl', v => `${fmt(v, 1)} m`, v => { st.wl = v; showAll(); });
+const PRESETS = {
+  time: () => { st.wall = false; $('wall').checked = false; setMode('flat', 20, 10); },
+  net: () => {
+    st.wall = true; $('wall').checked = true;
+    Object.assign(st, { ws: 10, wh: 3.2, wl: 10 });
+    Lab.setRange('ws', 10); Lab.setRange('wh', 3.2); Lab.setRange('wl', 10);
+    setMode('flat', 5, 16);
+  },
+  incline: () => { st.th = 37; Lab.setRange('th', 37); setMode('incline', 20, 8); },
+  range: () => { st.phi = 45; Lab.setRange('phi', 45); setMode('oblique', 0, 15); },
+};
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => PRESETS[b.dataset.preset]()));
+Lab.range('v0', v => `${fmt(v, 1)} m/s`, v => { st.v0 = v; showAll(); });
+Lab.range('h', v => `${fmt(v, 1)} m`, v => { st.h = v; showAll(); });
+Lab.range('phi', v => `${v}°`, v => { st.phi = v; showAll(); });
+Lab.range('th', v => `${v}°`, v => { st.th = v; showAll(); });
+showRows();
+showAll();
+</script>
+</body>
+</html>

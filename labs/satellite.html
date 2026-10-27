@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>万有引力与宇宙航行 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>卫星运行、变轨与双星</b><span class="crumb">必修第二册 · 第七章 万有引力与宇宙航行</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">卫星绕地球做匀速圆周运动时，<b>万有引力提供向心力</b>：GMm/r² = mv²/r = mω²r = m(2π/T)²r = ma。记住结论：<b>高轨低速大周期</b>。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="compare" checked>不同轨道比较</label>
+      <label class="chk"><input type="radio" name="mode" value="transfer">卫星变轨</label>
+      <label class="chk"><input type="radio" name="mode" value="binary">双星</label>
+    </div>
+
+    <div id="cBox">
+      <div class="row">卫星 B 的轨道半径 r <input type="range" id="rB" min="1" max="7" step="0.05" value="3"><span class="val" id="rBv"></span></div>
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="showEq" checked>赤道上的物体</label>
+        <label class="chk"><input type="checkbox" id="showSync" checked>同步卫星</label>
+      </div>
+    </div>
+    <div id="tBox">
+      <div class="row">内轨道半径 r₁ <input type="range" id="r1" min="1.1" max="3" step="0.1" value="1.5"><span class="val" id="r1v"></span></div>
+      <div class="row">外轨道半径 r₂ <input type="range" id="r2" min="2.5" max="7" step="0.1" value="5"><span class="val" id="r2v"></span></div>
+      <div class="row"><button class="primary" id="burn" style="flex:1">在 P 点点火加速</button><button id="tReset">回到内轨道</button></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="kepler" checked>椭圆轨道上画等时扫过的面积</label></div>
+    </div>
+    <div id="bBox">
+      <div class="row">星体 1 质量 m₁ <input type="range" id="m1" min="0.5" max="5" step="0.1" value="2"><span class="val" id="m1v"></span></div>
+      <div class="row">星体 2 质量 m₂ <input type="range" id="m2" min="0.5" max="5" step="0.1" value="1"><span class="val" id="m2v"></span></div>
+      <div class="row">两星间距 L <input type="range" id="Ld" min="1" max="4" step="0.1" value="2"><span class="val" id="Ldv"></span></div>
+      <div class="row muted">质量以太阳质量为单位，距离以天文单位（AU）为单位，周期以年为单位。</div>
+    </div>
+
+    <h2>播放</h2>
+    <div class="row"><button id="play" style="flex:1">⏸ 暂停</button><button id="fast">加速 4×</button></div>
+
+    <h2>数值</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>看一看，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, sci, text, line, vec, dot } = Lab;
+// 以地球半径 R 为长度单位、GM = gR² 为单位：速度单位 √(gR) ≈ 7.92 km/s，时间单位 √(R/g) ≈ 808 s
+const R_E = 6.4e6, G0 = 9.8, VU = Math.sqrt(G0 * R_E), TU = Math.sqrt(R_E / G0);
+const T_DAY = 24 * 3600 / TU;   // 地球自转周期（无量纲）
+const R_SYNC = Math.cbrt(T_DAY * T_DAY / (4 * Math.PI * Math.PI));
+const st = { mode: 'compare', rB: 3, showEq: true, showSync: true, r1: 1.5, r2: 5, kepler: true, m1: 2, m2: 1, L: 2, tau: 0, fast: 1 };
+// 演示时间：近地卫星约 6 秒一圈
+const SHOW = 2 * Math.PI / 6;
+
+const circ = r => ({ v: Math.sqrt(1 / r), w: Math.sqrt(1 / (r * r * r)), T: 2 * Math.PI * Math.sqrt(r * r * r), a: 1 / (r * r) });
+const kmps = v => v * VU / 1000;
+const hours = T => T * TU / 3600;
+
+// ---------- 变轨：数值积分 ----------
+let ship = null;
+function resetShip() {
+  ship = { x: st.r1, y: 0, vx: 0, vy: Math.sqrt(1 / st.r1), stage: 0, armed: false, trail: [], sectors: [], lastSector: 0, t: 0, burns: [] };
+}
+function accel(x, y) { const r = Math.hypot(x, y); return [-x / (r * r * r), -y / (r * r * r)]; }
+function shipStep(h) {
+  const s = ship;
+  const f = (x, y, vx, vy) => { const [ax, ay] = accel(x, y); return [vx, vy, ax, ay]; };
+  const k1 = f(s.x, s.y, s.vx, s.vy);
+  const k2 = f(s.x + h / 2 * k1[0], s.y + h / 2 * k1[1], s.vx + h / 2 * k1[2], s.vy + h / 2 * k1[3]);
+  const k3 = f(s.x + h / 2 * k2[0], s.y + h / 2 * k2[1], s.vx + h / 2 * k2[2], s.vy + h / 2 * k2[3]);
+  const k4 = f(s.x + h * k3[0], s.y + h * k3[1], s.vx + h * k3[2], s.vy + h * k3[3]);
+  const px = s.x, py = s.y;
+  s.x += h / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+  s.y += h / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+  s.vx += h / 6 * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
+  s.vy += h / 6 * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
+  s.t += h;
+  // 过 P 点（x 轴正半轴）或 Q 点（x 轴负半轴）时执行点火
+  if (s.armed) {
+    if (s.stage === 0 && py < 0 && s.y >= 0 && s.x > 0) burnAt('P');
+    else if (s.stage === 1 && py > 0 && s.y <= 0 && s.x < 0) burnAt('Q');
+  }
+  if (s.stage === 1 && st.kepler && s.sectors.length <= 16 && s.t - s.lastSector >= sectorDt()) {
+    s.sectors.push([s.x, s.y]); s.lastSector = s.t;
+  }
+}
+const sectorDt = () => 2 * Math.PI * Math.pow((st.r1 + st.r2) / 2, 1.5) / 16;
+function burnAt(where) {
+  const s = ship, r = Math.hypot(s.x, s.y), v = Math.hypot(s.vx, s.vy);
+  let nv;
+  if (where === 'P') { nv = Math.sqrt(2 * st.r2 / (st.r1 * (st.r1 + st.r2))); s.stage = 1; s.sectors = [[s.x, s.y]]; s.lastSector = s.t; }
+  else { nv = Math.sqrt(1 / st.r2); s.stage = 2; }
+  s.vx *= nv / v; s.vy *= nv / v;
+  s.burns.push({ where, x: s.x, y: s.y, from: v, to: nv, r });
+  s.armed = false;
+  updateBurnBtn();
+}
+function updateBurnBtn() {
+  const b = $('burn');
+  if (ship.stage === 0) { b.textContent = ship.armed ? '等待到达 P 点…' : '在 P 点点火加速'; b.disabled = false; }
+  else if (ship.stage === 1) { b.textContent = ship.armed ? '等待到达 Q 点…' : '在 Q 点再次点火加速'; b.disabled = false; }
+  else { b.textContent = '已进入外轨道'; b.disabled = true; }
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+function draw() {
+  if (!view.W) return;
+  view.begin();
+  if (st.mode === 'compare') drawCompare();
+  else if (st.mode === 'transfer') drawTransfer();
+  else drawBinary();
+}
+
+function earth(c, cx, cy, rp, spin) {
+  const gr = c.createRadialGradient(cx - rp * 0.3, cy - rp * 0.3, rp * 0.2, cx, cy, rp);
+  gr.addColorStop(0, '#93c5fd'); gr.addColorStop(1, '#1d4ed8');
+  c.beginPath(); c.arc(cx, cy, rp, 0, Math.PI * 2); c.fillStyle = gr; c.fill();
+  if (spin !== undefined) line(c, cx, cy, cx + Math.cos(spin) * rp, cy - Math.sin(spin) * rp, 'rgba(255,255,255,.6)', 1.5);
+  text(c, '地球', cx, cy, '#fff', { bold: true, size: 12, halo: false });
+}
+function orbitCircle(c, cx, cy, rp, color, dash) {
+  c.save(); if (dash) c.setLineDash(dash);
+  c.beginPath(); c.arc(cx, cy, rp, 0, Math.PI * 2); c.strokeStyle = color; c.lineWidth = 1.5; c.stroke(); c.restore();
+}
+
+function drawCompare() {
+  const c = ctx, W = view.W, H = view.H, cx = W * 0.42, cy = H / 2;
+  const rmax = Math.max(7, R_SYNC) * 1.08, k = Math.min(W * 0.4, H * 0.47) / rmax;
+  const tau = st.tau;
+  const wE = 2 * Math.PI / T_DAY;
+  earth(c, cx, cy, k, wE * tau);
+  // 同步卫星与赤道物体初相相同，始终在同一条半径上
+  const sats = [['A 近地卫星', 1.0, '#dc2626', 2.2], ['B 卫星', st.rB, '#ea580c', 1.0]];
+  if (st.showSync) sats.push(['C 同步卫星', R_SYNC, '#7c3aed', 0]);
+  sats.forEach(([name, r, col, ph]) => {
+    const o = circ(r), th = o.w * tau + ph;
+    orbitCircle(c, cx, cy, r * k, col + '55', [5, 5]);
+    const x = cx + Math.cos(th) * r * k, y = cy - Math.sin(th) * r * k;
+    // 速度（切向）与加速度（指向地心），长度按比例
+    vec(c, x, y, x - Math.sin(th) * o.v * 55, y - Math.cos(th) * o.v * 55, col, 2.2, 8);
+    vec(c, x, y, x - Math.cos(th) * Math.min(60, o.a * 40), y + Math.sin(th) * Math.min(60, o.a * 40), '#16a34a', 1.6, 6);
+    dot(c, x, y, 6, col, '#fff', 2);
+    text(c, name, x + 10, y - 14, col, { bold: true, size: 12, align: 'left' });
+  });
+  if (st.showEq) {
+    const th = wE * tau, x = cx + Math.cos(th) * k, y = cy - Math.sin(th) * k;
+    dot(c, x, y, 5, '#facc15', '#78350f', 1.5);
+    text(c, 'D 赤道上的物体', x + 10, y + 14, '#a16207', { bold: true, size: 12, align: 'left' });
+    if (st.showSync) line(c, x, y, cx + Math.cos(th) * R_SYNC * k, cy - Math.sin(th) * R_SYNC * k, 'rgba(124,58,237,.35)', 1, [3, 4]);
+  }
+  text(c, `演示时间：近地卫星约 6 s 一圈（实际 ${fmt(hours(2 * Math.PI) * 60, 0)} min）`, 14, 20, '#6b7280', { size: 12, align: 'left' });
+  text(c, '红/橙/紫箭头：速度；绿箭头：加速度（向心）', 14, 40, '#6b7280', { size: 12, align: 'left' });
+}
+
+function drawTransfer() {
+  const c = ctx, W = view.W, H = view.H, cx = W * 0.5, cy = H / 2;
+  const k = Math.min(W * 0.46, H * 0.46) / (st.r2 * 1.1);
+  const X = x => cx + x * k, Y = y => cy - y * k;
+  orbitCircle(c, cx, cy, st.r1 * k, '#2563eb88', [5, 5]);
+  orbitCircle(c, cx, cy, st.r2 * k, '#7c3aed88', [5, 5]);
+  // 转移椭圆：近地点 P 在 (r1, 0)，远地点 Q 在 (−r2, 0)
+  const a = (st.r1 + st.r2) / 2, ce = a - st.r1, b = Math.sqrt(st.r1 * st.r2);
+  c.save(); c.setLineDash([3, 4]); c.beginPath();
+  c.ellipse(X(-ce), Y(0), a * k, b * k, 0, 0, Math.PI * 2);
+  c.strokeStyle = ship.stage >= 1 ? '#ea580c' : '#fdba7499'; c.lineWidth = 1.5; c.stroke(); c.restore();
+  earth(c, cx, cy, k);
+  // 开普勒第二定律：等时间扫过的扇形
+  if (st.kepler && ship.sectors.length > 1) {
+    for (let i = 1; i < ship.sectors.length; i++) {
+      const [x0, y0] = ship.sectors[i - 1], [x1, y1] = ship.sectors[i];
+      c.beginPath(); c.moveTo(cx, cy); c.lineTo(X(x0), Y(y0)); c.lineTo(X(x1), Y(y1)); c.closePath();
+      c.fillStyle = i % 2 ? 'rgba(234,88,12,.16)' : 'rgba(234,88,12,.07)'; c.fill();
+    }
+  }
+  // 轨迹
+  if (ship.trail.length > 1) {
+    c.beginPath(); ship.trail.forEach(([x, y], i) => (i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y))));
+    c.strokeStyle = 'rgba(17,24,39,.5)'; c.lineWidth = 1.6; c.stroke();
+  }
+  dot(c, X(st.r1), Y(0), 4, '#111827', null); text(c, 'P', X(st.r1) + 12, Y(0) + 14, '#111827', { bold: true });
+  dot(c, X(-st.r2), Y(0), 4, '#111827', null); text(c, 'Q', X(-st.r2) - 14, Y(0) + 14, '#111827', { bold: true });
+  text(c, '轨道 1', X(0), Y(st.r1) - 10, '#2563eb', { bold: true, size: 12 });
+  text(c, '轨道 3', X(0), Y(st.r2) - 10, '#7c3aed', { bold: true, size: 12 });
+  text(c, '轨道 2（椭圆）', X(-ce), Y(-b) + 16, '#ea580c', { bold: true, size: 12 });
+  ship.burns.forEach(bn => {
+    text(c, `点火 ${fmt(kmps(bn.from), 2)} → ${fmt(kmps(bn.to), 2)} km/s`, X(bn.x) + (bn.x > 0 ? 10 : -10), Y(bn.y) - 18, '#b91c1c', { bold: true, size: 12, align: bn.x > 0 ? 'left' : 'right' });
+  });
+  const v = Math.hypot(ship.vx, ship.vy), [ax, ay] = accel(ship.x, ship.y);
+  const sx = X(ship.x), sy = Y(ship.y);
+  vec(c, sx, sy, sx + ship.vx * 70, sy - ship.vy * 70, '#dc2626', 2.4, 8);
+  vec(c, sx, sy, sx + ax * 60, sy - ay * 60, '#16a34a', 1.8, 7);
+  dot(c, sx, sy, 7, '#111827', '#fff', 2);
+  text(c, `v = ${fmt(kmps(v), 2)} km/s`, sx + 12, sy + 16, '#dc2626', { bold: true, size: 12, align: 'left' });
+  text(c, '红箭头：速度；绿箭头：加速度（只由万有引力决定）', 14, 20, '#6b7280', { size: 12, align: 'left' });
+}
+
+function drawBinary() {
+  const c = ctx, W = view.W, H = view.H, cx = W * 0.45, cy = H / 2;
+  const M = st.m1 + st.m2, r1 = st.L * st.m2 / M, r2 = st.L * st.m1 / M;
+  const k = Math.min(W * 0.4, H * 0.42) / (Math.max(r1, r2) * 1.15);
+  const T = Math.sqrt(st.L ** 3 / M);   // 年
+  const th = 2 * Math.PI * st.tau / (T * 4);   // 演示：一个周期约 4 s × T
+  orbitCircle(c, cx, cy, r1 * k, '#ea580c66', [5, 5]);
+  orbitCircle(c, cx, cy, r2 * k, '#2563eb66', [5, 5]);
+  const p1 = [cx + Math.cos(th) * r1 * k, cy - Math.sin(th) * r1 * k], p2 = [cx - Math.cos(th) * r2 * k, cy + Math.sin(th) * r2 * k];
+  line(c, p1[0], p1[1], p2[0], p2[1], 'rgba(0,0,0,.25)', 1, [4, 4]);
+  dot(c, cx, cy, 4, '#111827', null);
+  text(c, 'O（质心）', cx + 8, cy + 16, '#111827', { size: 12, align: 'left' });
+  const s1 = 8 + 5 * Math.sqrt(st.m1), s2 = 8 + 5 * Math.sqrt(st.m2);
+  dot(c, p1[0], p1[1], s1, '#f97316', '#fff', 2); dot(c, p2[0], p2[1], s2, '#3b82f6', '#fff', 2);
+  text(c, `m₁ = ${st.m1}`, p1[0], p1[1] - s1 - 12, '#c2410c', { bold: true, size: 12 });
+  text(c, `m₂ = ${st.m2}`, p2[0], p2[1] - s2 - 12, '#1d4ed8', { bold: true, size: 12 });
+  // 引力：大小相等方向相反
+  const ux = (p2[0] - p1[0]) / Math.hypot(p2[0] - p1[0], p2[1] - p1[1]), uy = (p2[1] - p1[1]) / Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+  vec(c, p1[0], p1[1], p1[0] + ux * 50, p1[1] + uy * 50, '#16a34a', 2.2, 8);
+  vec(c, p2[0], p2[1], p2[0] - ux * 50, p2[1] - uy * 50, '#16a34a', 2.2, 8);
+  text(c, '两星之间的万有引力提供各自的向心力，大小相等', 14, 20, '#6b7280', { size: 12, align: 'left' });
+  text(c, `r₁ : r₂ = m₂ : m₁ = ${fmt(st.m2, 1)} : ${fmt(st.m1, 1)}`, 14, 40, '#374151', { size: 13, bold: true, align: 'left' });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2;
+  chartView.begin();
+  if (st.mode === 'compare') {
+    const vs = [], Ts = [];
+    for (let r = 1; r <= 7.5; r += 0.05) { vs.push([r, kmps(circ(r).v)]); Ts.push([r, hours(circ(r).T)]); }
+    const pts = [{ x: 1, y: kmps(1), color: '#dc2626', label: 'A' }, { x: st.rB, y: kmps(circ(st.rB).v), color: '#ea580c', label: 'B' }];
+    if (st.showSync) pts.push({ x: R_SYNC, y: kmps(circ(R_SYNC).v), color: '#7c3aed', label: 'C' });
+    if (st.showEq) pts.push({ x: 1, y: 2 * Math.PI * R_E / 86400 / 1000, color: '#ca8a04', label: 'D 赤道物体' });
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 1, xmax: 7.5, ymin: 0, ymax: 8.5, xlabel: 'r / R', ylabel: '线速度 v / (km/s)', series: [{ pts: vs, color: '#2563eb' }], points: pts,
+      hlines: [{ y: 7.92, color: '#dc2626', label: '第一宇宙速度 7.9' }],
+    });
+    const tp = [{ x: 1, y: hours(circ(1).T), color: '#dc2626', label: 'A' }, { x: st.rB, y: hours(circ(st.rB).T), color: '#ea580c', label: 'B' }];
+    if (st.showSync) tp.push({ x: R_SYNC, y: 24, color: '#7c3aed', label: 'C' });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 1, xmax: 7.5, ymin: 0, ymax: 32, xlabel: 'r / R', ylabel: '周期 T / h（T² ∝ r³）', series: [{ pts: Ts, color: '#7c3aed' }], points: tp,
+      hlines: [{ y: 24, color: '#9ca3af', label: '24 h' }],
+    });
+  } else if (st.mode === 'transfer') {
+    const r = Math.hypot(ship.x, ship.y), v = Math.hypot(ship.vx, ship.vy);
+    const a = (st.r1 + st.r2) / 2, vr = [];
+    for (let x = st.r1; x <= st.r2 + 1e-9; x += (st.r2 - st.r1) / 100) vr.push([x, kmps(Math.sqrt(2 / x - 1 / a))]);
+    const cv = [];
+    for (let x = 1; x <= 7.2; x += 0.05) cv.push([x, kmps(Math.sqrt(1 / x))]);
+    Lab.plot(c, { x: 0, y: 0, w: W, h: H }, {
+      xmin: 1, xmax: 7.2, ymin: 0, ymax: kmps(Math.sqrt(2 * st.r2 / (st.r1 * (st.r1 + st.r2)))) * 1.15, xlabel: '到地心距离 r / R', ylabel: '速率 v / (km/s)', legendX: 160,
+      series: [{ pts: cv, color: '#2563eb', label: '圆轨道 v = √(GM/r)' }, { pts: vr, color: '#ea580c', dash: [6, 4], label: '椭圆轨道 2（P → Q）' }],
+      points: [{ x: r, y: kmps(v), color: '#111827', label: '当前' }],
+      vlines: [{ x: st.r1, color: '#2563eb', label: 'P' }, { x: st.r2, color: '#7c3aed', label: 'Q' }],
+    });
+  } else {
+    const M = st.m1 + st.m2, Ts = [];
+    for (let L = 0.5; L <= 4.5; L += 0.05) Ts.push([L, Math.sqrt(L ** 3 / M)]);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0.5, xmax: 4.5, ymin: 0, ymax: Math.sqrt(4.5 ** 3 / M) * 1.1, xlabel: 'L / AU', ylabel: '周期 T / 年', series: [{ pts: Ts, color: '#7c3aed' }],
+      points: [{ x: st.L, y: Math.sqrt(st.L ** 3 / M), color: '#7c3aed', label: fmt(Math.sqrt(st.L ** 3 / M), 2) + ' 年' }],
+    });
+    const rr = [];
+    for (let f = 0; f <= 1.0001; f += 0.01) rr.push([f, 1 - f]);
+    const f1 = st.m1 / M;
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 1, ymin: 0, ymax: 1.1, xlabel: 'm₁/(m₁ + m₂)', ylabel: 'r₁ / L（质量越大，轨道半径越小）', series: [{ pts: rr, color: '#ea580c' }],
+      points: [{ x: f1, y: 1 - f1, color: '#ea580c', label: `r₁ = ${fmt((1 - f1) * st.L, 2)} AU` }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  compare: [
+    'r 越大：v = √(GM/r) 越小，ω = √(GM/r³) 越小，a = GM/r² 越小，T = 2π√(r³/GM) 越大。',
+    '第一宇宙速度 7.9 km/s 是最大的环绕速度、最小的发射速度：v₁ = √(gR) = √(GM/R)。',
+    '同步卫星：在赤道上空，T = 24 h，r ≈ 6.6R（离地约 3.6×10⁴ km），所有同步卫星的 r、v、a 都相同。',
+    '赤道上的物体不是卫星：万有引力的一小部分提供向心力，不能用 GMm/r² = ma。它与同步卫星 ω 相同，用 v = ωr、a = ω²r 比较。',
+    '易错排序：a 近地 > a 同步 > a 赤道物体；v 近地 > v 同步 > v 赤道物体。',
+  ],
+  transfer: [
+    '由低轨道到高轨道要两次加速：在 P 点加速进入椭圆轨道，在 Q 点再加速进入高轨道。',
+    '速度排序：v_P（椭圆）> v₁（内圆）> v₃（外圆）> v_Q（椭圆）。',
+    '同一点的加速度只由万有引力决定：a = GM/r²，与在哪条轨道上无关。',
+    '周期由开普勒第三定律比较：a³/T² = k，T₁ < T₂ < T₃（a 为半长轴或半径）。',
+    '开普勒第二定律：相等时间内扫过的面积相等，所以近地点快、远地点慢。',
+    '从高轨道回到低轨道要减速；变轨后机械能：E₁ < E₂ < E₃。',
+  ],
+  binary: [
+    '双星绕连线上同一点（质心）转动，角速度 ω、周期 T 相同。',
+    '彼此的万有引力提供各自的向心力，大小相等：m₁ω²r₁ = m₂ω²r₂，所以 r₁ : r₂ = m₂ : m₁，质量大的半径小。',
+    'v₁ : v₂ = r₁ : r₂ = m₂ : m₁（ω 相同时 v ∝ r）。',
+    'Gm₁m₂/L² = m₁ω²r₁，结合 r₁ + r₂ = L 得 G(m₁ + m₂) = ω²L³，即 T = 2π√(L³/(G(m₁ + m₂)))。',
+  ],
+};
+function updatePanel() {
+  $('cBox').style.display = st.mode === 'compare' ? '' : 'none';
+  $('tBox').style.display = st.mode === 'transfer' ? '' : 'none';
+  $('bBox').style.display = st.mode === 'binary' ? '' : 'none';
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  $('hint').textContent = st.mode === 'compare' ? '轨道半径以地球半径 R 为单位；g 取 9.8 m/s²，R 取 6400 km'
+    : st.mode === 'transfer' ? '点按钮后，卫星到达 P（或 Q）点时自动点火' : '双星绕质心 O 做匀速圆周运动';
+  if (st.mode === 'compare') {
+    const rows = [['A 近地', 1], ['B', st.rB]];
+    if (st.showSync) rows.push(['C 同步', R_SYNC]);
+    let tbl = '<tr><td></td><td style="text-align:right">r</td><td style="text-align:right">v (km/s)</td><td style="text-align:right">T</td><td>a (m/s²)</td></tr>';
+    rows.forEach(([n, r]) => {
+      const o = circ(r), T = hours(o.T);
+      tbl += `<tr><td>${n}</td><td style="text-align:right">${fmt(r, 2)}R</td><td style="text-align:right">${fmt(kmps(o.v), 2)}</td><td style="text-align:right">${T < 2 ? fmt(T * 60, 0) + ' min' : fmt(T, 1) + ' h'}</td><td>${fmt(o.a * G0, 3)}</td></tr>`;
+    });
+    if (st.showEq) {
+      const w = 2 * Math.PI / 86400;
+      tbl += `<tr><td>D 赤道物体</td><td style="text-align:right">1R</td><td style="text-align:right">${fmt(w * R_E / 1000, 3)}</td><td style="text-align:right">24 h</td><td>${fmt(w * w * R_E, 4)}</td></tr>`;
+    }
+    $('tbl').innerHTML = tbl;
+    const o = circ(st.rB);
+    $('chain').innerHTML = `
+      <div class="node"><span class="f">GMm/r² = mv²/r → v = √(GM/r)</span><br>B：v = 7.92 × √(1/${fmt(st.rB, 2)}) = <span class="v">${fmt(kmps(o.v), 2)} km/s</span></div>
+      <div class="link">↓ T = 2πr/v</div>
+      <div class="node"><span class="f">T ∝ r^1.5</span><br>B：T = ${fmt(hours(circ(1).T) * 60, 1)} min × ${fmt(st.rB, 2)}^1.5 = <span class="v">${fmt(hours(o.T), 2)} h</span></div>
+      <div class="link">↓ 同步卫星</div>
+      <div class="node"><span class="f">T = 24 h → r = ∛(GMT²/4π²) = ${fmt(R_SYNC, 2)}R</span><br><span class="n">${st.rB < R_SYNC ? 'B 比同步卫星低，转得比地球自转快' : st.rB > R_SYNC ? 'B 比同步卫星高，转得比地球自转慢' : 'B 就是同步轨道'}</span></div>
+      ${st.showEq ? '<div class="node"><span class="f">赤道物体 D 与同步卫星 C：ω 相同</span><br>v = ωr、a = ω²r，r_C ≈ 6.6R > R → v_C > v_D，a_C > a_D<br><span class="n">再与近地卫星 A 比较（都是卫星，用"高轨低速"）：v_A > v_C，a_A > a_C</span></div>' : ''}`;
+  } else if (st.mode === 'transfer') {
+    const v1 = Math.sqrt(1 / st.r1), v3 = Math.sqrt(1 / st.r2), a = (st.r1 + st.r2) / 2;
+    const vP = Math.sqrt(2 * st.r2 / (st.r1 * (st.r1 + st.r2))), vQ = vP * st.r1 / st.r2;
+    const T = x => hours(2 * Math.PI * Math.pow(x, 1.5));
+    $('tbl').innerHTML = `
+      <tr><td>轨道 1（圆）v₁</td><td>${fmt(kmps(v1), 2)} km/s</td></tr>
+      <tr><td>轨道 2 在 P 点 v_P</td><td>${fmt(kmps(vP), 2)} km/s</td></tr>
+      <tr><td>轨道 2 在 Q 点 v_Q</td><td>${fmt(kmps(vQ), 2)} km/s</td></tr>
+      <tr><td>轨道 3（圆）v₃</td><td>${fmt(kmps(v3), 2)} km/s</td></tr>
+      <tr><td>P 点加速度（两条轨道相同）</td><td>${fmt(G0 / (st.r1 * st.r1), 2)} m/s²</td></tr>
+      <tr><td>周期 T₁ / T₂ / T₃</td><td>${fmt(T(st.r1), 1)} / ${fmt(T(a), 1)} / ${fmt(T(st.r2), 1)} h</td></tr>`;
+    $('chain').innerHTML = `
+      <div class="node"><span class="f">P 点：加速后做离心运动</span><br>v_P > v₁，万有引力不足以提供向心力 → 进入椭圆轨道</div>
+      <div class="link">↓ 开普勒第二定律：r_P·v_P = r_Q·v_Q</div>
+      <div class="node"><span class="f">P → Q：引力做负功，速度减小</span><br>v_Q = v_P·r₁/r₂ = <span class="v">${fmt(kmps(vQ), 2)} km/s</span></div>
+      <div class="link">↓ Q 点：v_Q < v₃，需要再加速</div>
+      <div class="node"><span class="f">进入轨道 3</span><br>排序：<span class="v">v_P ${fmt(kmps(vP), 2)} > v₁ ${fmt(kmps(v1), 2)} > v₃ ${fmt(kmps(v3), 2)} > v_Q ${fmt(kmps(vQ), 2)}</span>（km/s）</div>
+      <div class="link">↓ 开普勒第三定律</div>
+      <div class="node">半长轴 a₂ = (r₁ + r₂)/2 = ${fmt(a, 2)}R，T₁ < T₂ < T₃</div>`;
+  } else {
+    const M = st.m1 + st.m2, r1 = st.L * st.m2 / M, r2 = st.L * st.m1 / M, T = Math.sqrt(st.L ** 3 / M);
+    $('tbl').innerHTML = `
+      <tr><td>r₁ = L·m₂/(m₁ + m₂)</td><td>${fmt(r1, 3)} AU</td></tr>
+      <tr><td>r₂ = L·m₁/(m₁ + m₂)</td><td>${fmt(r2, 3)} AU</td></tr>
+      <tr><td>周期 T = √(L³/(m₁ + m₂))</td><td>${fmt(T, 3)} 年</td></tr>
+      <tr><td>线速度之比 v₁ : v₂</td><td>${fmt(r1 / r2, 3)}</td></tr>`;
+    $('chain').innerHTML = `
+      <div class="node"><span class="f">对 m₁：Gm₁m₂/L² = m₁ω²r₁</span><br><span class="f">对 m₂：Gm₁m₂/L² = m₂ω²r₂</span></div>
+      <div class="link">↓ 两式相比</div>
+      <div class="node">m₁r₁ = m₂r₂ → r₁ : r₂ = m₂ : m₁ = <span class="v">${fmt(r1, 3)} : ${fmt(r2, 3)}</span></div>
+      <div class="link">↓ 两式分别约去 m₁、m₂ 后相加，用 r₁ + r₂ = L</div>
+      <div class="node"><span class="f">G(m₁ + m₂) = ω²L³ → T = 2π√(L³/(G(m₁ + m₂)))</span><br><span class="n">用太阳质量、AU、年为单位时 T = √(L³/(m₁ + m₂)) = </span><span class="v">${fmt(T, 3)} 年</span></div>`;
+  }
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+const anim = Lab.loop(dt => {
+  const d = dt * st.fast;
+  st.tau += d * SHOW;
+  if (st.mode === 'transfer') {
+    let left = d * SHOW * 2;
+    while (left > 1e-9) { const h = Math.min(0.005, left); shipStep(h); left -= h; }
+    ship.trail.push([ship.x, ship.y]);
+    if (ship.trail.length > 600) ship.trail.shift();
+  }
+  render();
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; }
+  else { anim.start(); $('play').textContent = '⏸ 暂停'; }
+});
+$('fast').addEventListener('click', () => { st.fast = st.fast === 1 ? 4 : 1; $('fast').classList.toggle('on', st.fast !== 1); });
+$('burn').addEventListener('click', () => { ship.armed = true; updateBurnBtn(); });
+$('tReset').addEventListener('click', () => { resetShip(); updateBurnBtn(); render(); });
+$('showEq').addEventListener('change', e => { st.showEq = e.target.checked; render(); });
+$('showSync').addEventListener('change', e => { st.showSync = e.target.checked; render(); });
+$('kepler').addEventListener('change', e => { st.kepler = e.target.checked; render(); });
+Lab.radios('mode', m => { st.mode = m; st.tau = 0; resetShip(); updateBurnBtn(); render(); });
+Lab.range('rB', v => `${fmt(v, 2)} R`, v => { st.rB = v; render(); });
+Lab.range('r1', v => `${fmt(v, 1)} R`, v => { st.r1 = v; resetShip(); updateBurnBtn(); render(); });
+Lab.range('r2', v => `${fmt(v, 1)} R`, v => { st.r2 = v; resetShip(); updateBurnBtn(); render(); });
+Lab.range('m1', v => `${fmt(v, 1)}`, v => { st.m1 = v; render(); });
+Lab.range('m2', v => `${fmt(v, 1)}`, v => { st.m2 = v; render(); });
+Lab.range('Ld', v => `${fmt(v, 1)} AU`, v => { st.L = v; render(); });
+resetShip();
+updateBurnBtn();
+anim.start();
+</script>
+</body>
+</html>

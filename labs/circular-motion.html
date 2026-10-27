@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>圆周运动 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>圆周运动的临界问题</b><span class="crumb">必修第二册 · 第六章 圆周运动</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">向心力不是新的力，而是<b>沿半径方向的合力</b>：F合 = mv²/r。解题时先找圆心、画受力，再把力沿半径方向分解。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="vertical" checked>竖直面内圆周</label>
+      <label class="chk"><input type="radio" name="mode" value="bridge">汽车过桥</label>
+      <label class="chk"><input type="radio" name="mode" value="bank">火车转弯</label>
+    </div>
+
+    <div id="vBox">
+      <div class="row">
+        <label class="chk"><input type="radio" name="model" value="rope" checked>绳模型（只能拉）</label>
+        <label class="chk"><input type="radio" name="model" value="rod">杆模型（能拉能推）</label>
+      </div>
+      <div class="row">最低点速度 v₀ <input type="range" id="v0" min="0.5" max="12" step="0.05" value="7.5"><span class="val" id="v0v"></span></div>
+      <div class="row">半径 r <input type="range" id="r" min="0.4" max="2" step="0.1" value="1"><span class="val" id="rv"></span></div>
+      <div class="row">小球质量 m <input type="range" id="m" min="0.1" max="2" step="0.1" value="1"><span class="val" id="mv"></span></div>
+    </div>
+    <div id="bBox">
+      <div class="row">
+        <label class="chk"><input type="radio" name="bshape" value="convex" checked>拱形桥</label>
+        <label class="chk"><input type="radio" name="bshape" value="concave">凹形路面</label>
+      </div>
+      <div class="row">车速 v <input type="range" id="bv" min="0" max="30" step="0.5" value="15"><span class="val" id="bvv"></span></div>
+      <div class="row">桥面半径 R <input type="range" id="R" min="10" max="80" step="1" value="40"><span class="val" id="Rv"></span></div>
+    </div>
+    <div id="kBox">
+      <div class="row">轨道倾角 θ <input type="range" id="th" min="1" max="20" step="0.5" value="5"><span class="val" id="thv"></span></div>
+      <div class="row">转弯半径 r <input type="range" id="kr" min="200" max="2000" step="50" value="1000"><span class="val" id="krv"></span></div>
+      <div class="row">车速 v <input type="range" id="kv" min="5" max="80" step="0.5" value="30"><span class="val" id="kvv"></span></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">⏸ 暂停</button><button id="restart">重新开始</button></div>
+
+    <h2>受力与数值</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const g = 10, DEG = Math.PI / 180;
+const st = { mode: 'vertical', model: 'rope', v0: 7.5, r: 1, m: 1, bshape: 'convex', bv: 15, R: 40, th: 5, kr: 1000, kv: 30 };
+
+// ---------- 竖直面圆周：φ 从最低点起算，逆时针为正 ----------
+let sim = null;
+function resetSim() {
+  sim = { phi: 0, w: st.v0 / st.r, free: false, p: null, u: null, tf: 0, done: false, trail: [], detachPhi: null, t: 0 };
+  bsim = { a: -BR_SPAN, fly: false, p: null, u: null, t: 0, done: false };
+}
+const ropeF = (phi, w) => st.m * (st.r * w * w + g * Math.cos(phi));
+function vStep(dt) {
+  const n = 20, h = dt / n, r = st.r;
+  for (let k = 0; k < n && !sim.done; k++) {
+    if (!sim.free) {
+      const f = (p, w) => [w, -(g / r) * Math.sin(p)];
+      const { phi, w } = sim;
+      const k1 = f(phi, w), k2 = f(phi + h / 2 * k1[0], w + h / 2 * k1[1]);
+      const k3 = f(phi + h / 2 * k2[0], w + h / 2 * k2[1]), k4 = f(phi + h * k3[0], w + h * k3[1]);
+      sim.phi += h / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+      sim.w += h / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+      if (st.model === 'rope' && ropeF(sim.phi, sim.w) < 0) {
+        sim.free = true; sim.detachPhi = sim.phi;
+        sim.p = [r * Math.sin(sim.phi), -r * Math.cos(sim.phi)];
+        sim.u = [r * sim.w * Math.cos(sim.phi), r * sim.w * Math.sin(sim.phi)];
+      }
+    } else {
+      sim.u[1] -= g * h;
+      sim.p[0] += sim.u[0] * h; sim.p[1] += sim.u[1] * h;
+      sim.tf += h;
+      if (sim.tf > 0.02 && Math.hypot(sim.p[0], sim.p[1]) >= r) sim.done = true;
+    }
+  }
+  sim.t += dt;
+  const pos = ballPos();
+  sim.trail.push(pos);
+  if (sim.trail.length > 400) sim.trail.shift();
+}
+function ballPos() { return sim.free ? sim.p.slice() : [st.r * Math.sin(sim.phi), -st.r * Math.cos(sim.phi)]; }
+// 由能量守恒得到的理论值
+const v2At = phi => st.v0 * st.v0 - 2 * g * st.r * (1 - Math.cos(phi));
+function vertInfo() {
+  const gr = g * st.r, v02 = st.v0 * st.v0;
+  const vTop2 = v02 - 4 * gr;
+  let fate;
+  if (st.model === 'rope') {
+    if (vTop2 >= gr - 1e-9) fate = 'loop';
+    else if (v02 <= 2 * gr) fate = 'swing';
+    else fate = 'slack';
+  } else fate = vTop2 >= 0 ? 'loop' : 'swing';
+  const swingCos = 1 - v02 / (2 * gr);
+  const slackCos = (2 * gr - v02) / (3 * gr);
+  return { gr, v02, vTop2, fate, swingCos, slackCos, vminRope: Math.sqrt(5 * gr), vminRod: 2 * Math.sqrt(gr) };
+}
+
+// ---------- 汽车过桥 ----------
+const BR_SPAN = 24 * DEG;
+let bsim = null;
+function bStep(dt) {
+  const n = 10, h = dt / n, R = st.R;
+  for (let k = 0; k < n && !bsim.done; k++) {
+    if (!bsim.fly) {
+      bsim.a += st.bv / R * h;
+      const N = bridgeN(bsim.a);
+      if (N < 0) {
+        bsim.fly = true;
+        bsim.p = [R * Math.sin(bsim.a), R * Math.cos(bsim.a) - R];
+        bsim.u = [st.bv * Math.cos(bsim.a), -st.bv * Math.sin(bsim.a)];
+      }
+      if (bsim.a > BR_SPAN) bsim.done = true;
+    } else {
+      bsim.u[1] -= g * h;
+      bsim.p[0] += bsim.u[0] * h; bsim.p[1] += bsim.u[1] * h;
+      bsim.tf = (bsim.tf || 0) + h;
+      const half = R * Math.sin(BR_SPAN), xx = Math.max(-half, Math.min(half, bsim.p[0]));
+      const ground = st.bshape === 'convex' ? Math.sqrt(R * R - xx * xx) - R : R - Math.sqrt(R * R - xx * xx);
+      if ((bsim.tf > 0.05 && bsim.p[1] <= ground) || bsim.p[0] > half * 1.3) bsim.done = true;
+    }
+  }
+  bsim.t += dt;
+}
+// 桥面对车的支持力（以 mg 为单位）；α 为车所在位置偏离最高（最低）点的角度
+const bridgeN = a => st.bshape === 'convex' ? Math.cos(a) - st.bv * st.bv / (g * st.R) : Math.cos(a) + st.bv * st.bv / (g * st.R);
+
+// ---------- 火车转弯 ----------
+function bankForces(v = st.kv) {
+  const t = st.th * DEG, an = v * v / st.kr;
+  return { F: (an * Math.cos(t) - g * Math.sin(t)) / g, N: (g * Math.cos(t) + an * Math.sin(t)) / g, v0: Math.sqrt(g * st.kr * Math.tan(t)), an };
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+
+function draw() {
+  if (!view.W) return;
+  view.begin();
+  if (st.mode === 'vertical') drawVertical();
+  else if (st.mode === 'bridge') drawBridge();
+  else drawBank();
+}
+
+function forceVec(c, x, y, fx, fy, k, color, label, side = 1) {
+  const L = Math.hypot(fx, fy) * k;
+  if (L < 3) return;
+  vec(c, x, y, x + fx * k, y - fy * k, color, 2.6, 9);
+  const ux = fx * k / L, uy = -fy * k / L;
+  text(c, label, x + fx * k + ux * 14 - uy * 12 * side, y - fy * k + uy * 14 + ux * 12 * side, color, { bold: true, size: 13 });
+}
+
+function drawVertical() {
+  const c = ctx, W = view.W, H = view.H, info = vertInfo();
+  const cx = W * 0.4, cy = H * 0.5, rp = Math.min(W * 0.27, H * 0.34), k = rp / st.r;
+  const X = x => cx + x * k, Y = y => cy - y * k;
+  // 圆轨迹与参考线
+  c.beginPath(); c.arc(cx, cy, rp, 0, Math.PI * 2);
+  c.strokeStyle = '#e5e7eb'; c.lineWidth = 2; c.setLineDash([6, 5]); c.stroke(); c.setLineDash([]);
+  line(c, cx - rp - 20, cy, cx + rp + 20, cy, '#f3f4f6');
+  line(c, cx, cy - rp - 20, cx, cy + rp + 20, '#f3f4f6');
+  dot(c, cx, cy, 4, '#374151', null);
+  text(c, 'O', cx - 12, cy - 10, '#374151', { bold: true });
+  text(c, '最高点', cx, cy - rp - 28, '#6b7280', { size: 12 });
+  text(c, '最低点', cx, cy + rp + 28, '#6b7280', { size: 12 });
+  // 轨迹
+  if (sim.trail.length > 1) {
+    c.beginPath();
+    sim.trail.forEach(([x, y], i) => (i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y))));
+    c.strokeStyle = 'rgba(234,88,12,.45)'; c.lineWidth = 2; c.stroke();
+  }
+  if (sim.detachPhi !== null) {
+    const [dx, dy] = [st.r * Math.sin(sim.detachPhi), -st.r * Math.cos(sim.detachPhi)];
+    dot(c, X(dx), Y(dy), 5, '#dc2626');
+    text(c, '绳子松弛，小球脱离圆周', X(dx) + (dx > 0 ? 12 : -12), Y(dy) - 14, '#dc2626', { bold: true, size: 12, align: dx > 0 ? 'left' : 'right' });
+  }
+  const [bx, by] = ballPos();
+  // 绳或杆
+  if (!sim.free) {
+    if (st.model === 'rope') line(c, cx, cy, X(bx), Y(by), '#78716c', 1.6);
+    else line(c, cx, cy, X(bx), Y(by), '#57534e', 5);
+  } else {
+    // 松弛的绳子画成折线
+    const mx = (cx + X(bx)) / 2 + 12, my = (cy + Y(by)) / 2 + 12;
+    c.beginPath(); c.moveTo(cx, cy); c.quadraticCurveTo(mx, my, X(bx), Y(by));
+    c.strokeStyle = '#a8a29e'; c.lineWidth = 1.4; c.stroke();
+  }
+  const ballR = 9 + st.m * 4;
+  // 受力：重力和绳（杆）的力，以 mg 为基准长度 50 px
+  const kf = 50 / (st.m * g);
+  if (!sim.free) {
+    const F = ropeF(sim.phi, sim.w);
+    const ux = -Math.sin(sim.phi), uy = Math.cos(sim.phi);   // 指向圆心
+    forceVec(c, X(bx), Y(by), 0, -st.m * g, kf, '#16a34a', 'mg');
+    if (Math.abs(F) > 1e-3) forceVec(c, X(bx), Y(by), ux * F, uy * F, Math.min(kf, 140 / Math.abs(F)), F >= 0 ? '#2563eb' : '#7c3aed',
+      st.model === 'rope' ? `T = ${fmt(F, 1)} N` : F >= 0 ? `拉力 ${fmt(F, 1)} N` : `支持力 ${fmt(-F, 1)} N`, -1);
+    // 速度方向
+    const v = st.r * sim.w, tx = Math.cos(sim.phi), ty = Math.sin(sim.phi);
+    if (Math.abs(v) > 0.05) vec(c, X(bx), Y(by), X(bx) + tx * v * 9, Y(by) - ty * v * 9, '#dc2626', 2, 8);
+  } else {
+    forceVec(c, X(bx), Y(by), 0, -st.m * g, kf, '#16a34a', 'mg');
+    vec(c, X(bx), Y(by), X(bx) + sim.u[0] * 9, Y(by) - sim.u[1] * 9, '#dc2626', 2, 8);
+  }
+  dot(c, X(bx), Y(by), ballR, '#f97316', '#fff', 2);
+
+  // 右侧：最高点受力分析示意
+  const px = Math.min(W - 120, cx + rp + 130), py = 70;
+  if (px > cx + rp + 70) {
+    text(c, '最高点：mg + F = mv²/r', px, py - 30, '#374151', { bold: true, size: 13 });
+    const vt2 = info.vTop2, Ft = st.m * (vt2 / st.r - g);
+    dot(c, px, py + 20, 9, '#fdba74', '#fff', 2);
+    forceVec(c, px, py + 20, 0, -st.m * g, kf * 0.8, '#16a34a', 'mg');
+    if (vt2 >= 0 && (st.model === 'rod' || Ft >= 0) && Math.abs(Ft) > 0.01) forceVec(c, px, py + 20, 0, -Ft, Math.min(kf * 0.8, 70 / Math.abs(Ft)), Ft >= 0 ? '#2563eb' : '#7c3aed', Ft >= 0 ? '向下拉' : '向上推', -1);
+    text(c, vt2 < 0 ? '到不了最高点' : `v顶 = ${fmt(Math.sqrt(vt2), 2)} m/s`, px, py + 108, '#374151', { size: 12 });
+    text(c, `临界 √(gr) = ${fmt(Math.sqrt(info.gr), 2)} m/s`, px, py + 126, '#0d9488', { size: 12, bold: true });
+  }
+  text(c, `t = ${fmt(sim.t, 2)} s`, 14, 20, '#111827', { bold: true, size: 15, align: 'left' });
+}
+
+function drawCar(c, x, y, ang, s) {
+  c.save(); c.translate(x, y); c.rotate(-ang);
+  c.fillStyle = '#2563eb'; c.fillRect(-s, -s * 0.9, s * 2, s * 0.6);
+  c.fillStyle = '#60a5fa'; c.fillRect(-s * 0.55, -s * 1.3, s * 1.1, s * 0.45);
+  dot(c, -s * 0.6, -s * 0.25, s * 0.25, '#111827', null);
+  dot(c, s * 0.6, -s * 0.25, s * 0.25, '#111827', null);
+  c.restore();
+}
+
+function drawBridge() {
+  const c = ctx, W = view.W, H = view.H, R = st.R, conv = st.bshape === 'convex';
+  const half = R * Math.sin(BR_SPAN);
+  const k = (W - 120) / (2 * half * 1.15);
+  const ox = W / 2, oy = conv ? H * 0.42 : H * 0.72;
+  const X = x => ox + x * k, Y = y => oy - y * k;
+  const surf = x => conv ? Math.sqrt(R * R - x * x) - R : R - Math.sqrt(R * R - x * x);
+  // 路面
+  c.beginPath();
+  for (let i = 0; i <= 100; i++) { const x = -half * 1.25 + 2.5 * half * i / 100; const xx = Math.max(-half, Math.min(half, x)); const y = surf(xx); i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y)); }
+  c.lineTo(X(half * 1.25), H); c.lineTo(X(-half * 1.25), H); c.closePath();
+  c.fillStyle = '#e7e5e4'; c.fill();
+  c.strokeStyle = '#57534e'; c.lineWidth = 3; c.stroke();
+  // 圆心方向
+  const cyW = conv ? -R : R;
+  const ccy = Y(cyW);
+  if (ccy > -2000 && ccy < H + 2000) line(c, X(0), Y(surf(0)), X(0), Math.max(0, Math.min(H, ccy)), 'rgba(0,0,0,.18)', 1, [4, 4]);
+  text(c, conv ? '圆心在下方' : '圆心在上方', X(0) + 8, conv ? Y(surf(0)) + 60 : Y(surf(0)) - 80, '#9ca3af', { size: 12, align: 'left' });
+
+  let px, py, ang;
+  if (!bsim.fly) {
+    const a = Math.max(-BR_SPAN, Math.min(BR_SPAN, bsim.a));
+    px = R * Math.sin(a); py = surf(px); ang = conv ? -a : a;
+  } else { [px, py] = bsim.p; ang = Math.atan2(bsim.u[1], bsim.u[0]); }
+  const s = 22;
+  drawCar(c, X(px), Y(py), ang, s);
+  // 受力（以 mg = 60 px 为基准）
+  const cxm = X(px) - Math.sin(ang) * s * 0.6, cym = Y(py) - Math.cos(ang) * s * 0.6;
+  forceVec(c, cxm, cym, 0, -1, 60, '#16a34a', 'mg');
+  if (!bsim.fly) {
+    const a = Math.max(-BR_SPAN, Math.min(BR_SPAN, bsim.a)), N = bridgeN(a);
+    const nx = conv ? Math.sin(a) : -Math.sin(a), ny = Math.cos(a);
+    forceVec(c, X(px), Y(py), nx * N, ny * N, 60, '#2563eb', `F_N = ${fmt(N, 2)} mg`, -1);
+  } else text(c, '车已腾空：F_N = 0', X(px), Y(py) - 50, '#dc2626', { bold: true, size: 14 });
+
+  const vc = Math.sqrt(g * R);
+  text(c, conv ? `临界速度 √(gR) = ${fmt(vc, 2)} m/s` : '凹形路面：最低点 F_N 最大', 14, 22, conv ? '#0d9488' : '#374151', { bold: true, size: 14, align: 'left' });
+  if (conv) text(c, st.bv >= vc ? '车速 ≥ √(gR)：到最高点前（或在最高点）就会离开桥面' : '车速 < √(gR)：能沿桥面通过，处于失重状态', 14, 44, st.bv >= vc ? '#dc2626' : '#16a34a', { size: 13, align: 'left' });
+  else text(c, '加速度向上，处于超重状态：F_N > mg，车速越大越容易爆胎', 14, 44, '#b45309', { size: 13, align: 'left' });
+}
+
+function drawBank() {
+  const c = ctx, W = view.W, H = view.H, f = bankForces(), t = st.th * DEG;
+  // 横截面：圆心在左侧（内侧）
+  const gx = W * 0.55, gy = H * 0.66, Lw = Math.min(W * 0.36, 260);
+  const ux = Math.cos(t), uy = -Math.sin(t);    // 沿路面指向外侧（右上方）的屏幕方向
+  // 路基
+  c.beginPath();
+  c.moveTo(gx - ux * Lw, gy - uy * Lw); c.lineTo(gx + ux * Lw, gy + uy * Lw);
+  c.lineTo(gx + ux * Lw, H); c.lineTo(gx - ux * Lw, H); c.closePath();
+  c.fillStyle = '#e7e5e4'; c.fill();
+  line(c, gx - ux * Lw, gy - uy * Lw, gx + ux * Lw, gy + uy * Lw, '#57534e', 3);
+  line(c, gx - ux * Lw, gy - uy * Lw, gx + ux * Lw, gy - uy * Lw, 'rgba(0,0,0,.25)', 1, [4, 4]);
+  c.beginPath(); c.arc(gx - ux * Lw, gy - uy * Lw, 40, -t, 0); c.strokeStyle = '#57534e'; c.lineWidth = 1.5; c.stroke();
+  text(c, 'θ', gx - ux * Lw + 52, gy - uy * Lw - 8, '#57534e', { bold: true });
+  // 铁轨与车厢
+  const rw = 70;
+  const rIn = [gx - ux * rw, gy - uy * rw], rOut = [gx + ux * rw, gy + uy * rw];
+  [rIn, rOut].forEach(([x, y]) => { c.fillStyle = '#374151'; c.fillRect(x - 6, y - 8, 12, 8); });
+  text(c, '内轨', rIn[0] - ux * 0 - 4, rIn[1] + 22, '#374151', { size: 12, bold: true });
+  text(c, '外轨', rOut[0] + 4, rOut[1] + 22, '#374151', { size: 12, bold: true });
+  c.save(); c.translate(gx, gy); c.rotate(-t);
+  c.fillStyle = 'rgba(37,99,235,.15)'; c.strokeStyle = '#2563eb'; c.lineWidth = 2;
+  c.fillRect(-95, -150, 190, 135); c.strokeRect(-95, -150, 190, 135);
+  c.restore();
+  const cmx = gx - Math.sin(t) * 80, cmy = gy - Math.cos(t) * 80;
+  // 力：以 mg = 80 px
+  const K = 80;
+  forceVec(c, cmx, cmy, 0, -1, K, '#16a34a', 'mg');
+  forceVec(c, cmx, cmy, -Math.sin(t) * f.N, Math.cos(t) * f.N, K, '#2563eb', 'F_N', -1);
+  // 轮缘对车的侧向力：F > 0 时外轨把车往内侧（沿路面向下）推
+  if (Math.abs(f.F) > 0.004) {
+    const sx = f.F > 0 ? rOut[0] : rIn[0], sy = f.F > 0 ? rOut[1] - 10 : rIn[1] - 10;
+    forceVec(c, sx, sy, -Math.cos(t) * f.F, -Math.sin(t) * f.F, Math.min(K * 3, 70 / Math.abs(f.F)), '#dc2626', f.F > 0 ? '外轨推车' : '内轨推车');
+  }
+  // 合力（水平指向圆心）
+  vec(c, cmx, cmy, cmx - f.an / g * K, cmy, '#7c3aed', 2, 8);
+  text(c, 'mv²/r（指向圆心）', cmx - f.an / g * K - 8, cmy - 14, '#7c3aed', { bold: true, size: 12, align: 'right' });
+  text(c, '← 圆心（弯道内侧）', 14, gy - 120, '#9ca3af', { size: 13, align: 'left' });
+  text(c, `设计速度 v₀ = √(gr·tanθ) = ${fmt(f.v0, 1)} m/s（${fmt(f.v0 * 3.6, 0)} km/h）`, 14, 22, '#0d9488', { bold: true, size: 14, align: 'left' });
+  const msg = Math.abs(st.kv - f.v0) < 0.3 ? ['v = v₀：重力和支持力的合力恰好提供向心力，内外轨都不受侧压力', '#16a34a']
+    : st.kv > f.v0 ? ['v > v₀：重力和支持力的合力不够，外轨对轮缘有向内的压力（外轨受挤压）', '#dc2626']
+      : ['v < v₀：重力和支持力的合力太大，内轨对轮缘有向外的压力（内轨受挤压）', '#b45309'];
+  text(c, msg[0], 14, 44, msg[1], { size: 13, align: 'left' });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2;
+  chartView.begin();
+  if (st.mode === 'vertical') {
+    const info = vertInfo(), Fs = [], vs = [];
+    for (let d = 0; d <= 360; d += 1) {
+      const p = d * DEG, v2 = v2At(p);
+      if (v2 < 0) break;
+      const F = st.m * (v2 / st.r + g * Math.cos(p));
+      if (st.model === 'rope' && F < 0) break;
+      Fs.push([d, F]); vs.push([d, Math.sqrt(v2)]);
+    }
+    const cur = sim.free ? null : ((sim.phi / DEG) % 360 + 360) % 360;
+    const Fcur = sim.free ? 0 : ropeF(sim.phi, sim.w);
+    const Fmax = Math.max(...Fs.map(p => Math.abs(p[1])), st.m * g) * 1.2;
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 360, ymin: st.model === 'rod' ? -Fmax : 0, ymax: Fmax, xlabel: 'φ / °（从最低点起）', ylabel: st.model === 'rope' ? '绳的拉力 T / N' : '杆的力 F / N（正为拉，负为推）', xticks: 6,
+      series: [{ pts: Fs, color: '#2563eb' }], hlines: [{ y: st.m * g, color: '#16a34a', label: 'mg' }],
+      vlines: [{ x: 180, color: '#9ca3af', label: '最高点' }],
+      points: cur !== null && Math.abs(sim.w) > 1e-6 ? [{ x: cur, y: Fcur, color: '#2563eb' }] : [],
+    });
+    const vmax = st.v0 * 1.2;
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 360, ymin: 0, ymax: vmax, xlabel: 'φ / °', ylabel: '速率 v / (m/s)', xticks: 6,
+      series: [{ pts: vs, color: '#dc2626' }],
+      hlines: st.model === 'rope' ? [{ y: Math.sqrt(info.gr), color: '#0d9488', label: '√(gr)' }] : [],
+      vlines: [{ x: 180, color: '#9ca3af' }],
+      points: cur !== null ? [{ x: cur, y: Math.abs(st.r * sim.w), color: '#dc2626' }] : [],
+    });
+  } else if (st.mode === 'bridge') {
+    const conv = st.bshape === 'convex', vc = Math.sqrt(g * st.R), pts = [];
+    for (let v = 0; v <= 30; v += 0.25) pts.push([v, Math.max(0, conv ? 1 - v * v / (g * st.R) : 1 + v * v / (g * st.R))]);
+    const N0 = Math.max(0, conv ? 1 - st.bv * st.bv / (g * st.R) : 1 + st.bv * st.bv / (g * st.R));
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 30, ymin: 0, ymax: conv ? 1.3 : Math.max(2, pts[pts.length - 1][1] * 1.1), xlabel: 'v / (m/s)', ylabel: `${conv ? '最高点' : '最低点'} F_N / mg`,
+      series: [{ pts, color: '#2563eb' }], hlines: [{ y: 1, color: '#16a34a', label: 'mg' }],
+      vlines: conv ? [{ x: vc, color: '#0d9488', label: '√(gR)' }] : [], points: [{ x: st.bv, y: N0, color: '#2563eb', label: fmt(N0, 2) }],
+    });
+    const along = [];
+    for (let d = -24; d <= 24; d += 0.5) along.push([d, bridgeN(d * DEG)]);
+    const a = bsim.fly ? null : Math.max(-BR_SPAN, Math.min(BR_SPAN, bsim.a)) / DEG;
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: -24, xmax: 24, ymin: Math.min(-0.3, ...along.map(p => p[1])), ymax: Math.max(1.3, ...along.map(p => p[1])) * 1.05, xlabel: '位置角 α / °', ylabel: 'F_N / mg（< 0 表示要离开路面）',
+      series: [{ pts: along, color: '#7c3aed' }], hlines: [{ y: 0, color: '#dc2626' }],
+      points: a !== null ? [{ x: a, y: bridgeN(a * DEG), color: '#7c3aed' }] : [],
+    });
+  } else {
+    const f = bankForces(), Fp = [], Np = [];
+    for (let v = 5; v <= 80; v += 0.5) { const b = bankForces(v); Fp.push([v, b.F]); Np.push([v, b.N]); }
+    const lo = Math.min(...Fp.map(p => p[1])), hi = Math.max(...Fp.map(p => p[1]));
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 5, xmax: 80, ymin: Math.min(-0.05, lo * 1.1), ymax: Math.max(0.05, hi * 1.1), xlabel: 'v / (m/s)', ylabel: '轮缘侧压力 / mg（正：外轨）',
+      series: [{ pts: Fp, color: '#dc2626' }], vlines: [{ x: f.v0, color: '#0d9488', label: 'v₀' }],
+      points: [{ x: st.kv, y: f.F, color: '#dc2626' }],
+    });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 5, xmax: 80, ymin: 0.9, ymax: Math.max(...Np.map(p => p[1])) * 1.02, xlabel: 'v / (m/s)', ylabel: '支持力 F_N / mg',
+      series: [{ pts: Np, color: '#2563eb' }], vlines: [{ x: f.v0, color: '#0d9488' }],
+      points: [{ x: st.kv, y: f.N, color: '#2563eb' }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  vertical: [
+    '绳模型（或沿圆轨道内侧运动）：最高点 v ≥ √(gr)，恰好通过时只有重力提供向心力。',
+    '杆模型（或圆管内运动）：最高点 v ≥ 0；v < √(gr) 时杆推球，v > √(gr) 时杆拉球，v = √(gr) 时杆不受力。',
+    '由机械能守恒：v₀² = v顶² + 4gr，所以绳模型要求最低点 v₀ ≥ √(5gr)，杆模型要求 v₀ ≥ 2√(gr)。',
+    '绳模型完整转过一周时，最低点与最高点拉力之差恒为 6mg。',
+    '√(2gr) < v₀ < √(5gr) 时，小球会在水平直径上方某处绳子松弛，之后做斜抛运动。',
+  ],
+  bridge: [
+    '拱形桥最高点：mg − F_N = mv²/R，F_N < mg（失重）；v = √(gR) 时 F_N = 0，车将离开桥面。',
+    '凹形路面最低点：F_N − mg = mv²/R，F_N > mg（超重）。',
+    '车对桥的压力与桥对车的支持力是相互作用力，大小相等。',
+    '在拱形桥上坡阶段 F_N = mg cosα − mv²/R，速度足够大时还没到最高点就会腾空。',
+  ],
+  bank: [
+    '外轨略高于内轨，使重力和支持力的合力水平指向圆心。',
+    '设计速度 v₀ = √(gr·tanθ)，只与 r、θ 有关，与火车质量无关。',
+    'v > v₀ 时外轨受挤压，v < v₀ 时内轨受挤压。',
+    '同样的分析适用于圆锥摆、飞机转弯、汽车在倾斜路面转弯：mg·tanθ = mv²/r。',
+  ],
+};
+function updatePanel() {
+  $('vBox').style.display = st.mode === 'vertical' ? '' : 'none';
+  $('bBox').style.display = st.mode === 'bridge' ? '' : 'none';
+  $('kBox').style.display = st.mode === 'bank' ? '' : 'none';
+  $('hint').textContent = st.mode === 'vertical' ? '受力箭头以 mg 为基准长度；蓝色为拉力，紫色为推力（支持力）'
+    : st.mode === 'bridge' ? '车从左向右匀速率通过，箭头以 mg 为基准长度' : '横截面图，弯道圆心在左侧；箭头以 mg 为基准长度';
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  let tbl = '', html = '';
+  if (st.mode === 'vertical') {
+    const I = vertInfo(), m = st.m, mg = m * g;
+    const v = sim.free ? Math.hypot(...sim.u) : Math.abs(st.r * sim.w);
+    const F = sim.free ? 0 : ropeF(sim.phi, sim.w);
+    tbl = `
+      <tr><td>当前速率 v</td><td>${fmt(v, 2)} m/s</td></tr>
+      <tr><td>${st.model === 'rope' ? '绳的拉力 T' : '杆的力 F（正为拉）'}</td><td>${fmt(F, 2)} N</td></tr>
+      <tr><td>最低点 F = mg + mv₀²/r</td><td>${fmt(mg + m * I.v02 / st.r, 2)} N</td></tr>
+      <tr><td>到最高点的速率 √(v₀² − 4gr)</td><td>${I.vTop2 >= 0 ? fmt(Math.sqrt(I.vTop2), 2) + ' m/s' : '到不了'}</td></tr>
+      <tr><td>重力 mg</td><td>${fmt(mg, 2)} N</td></tr>`;
+    if (st.model === 'rope') {
+      html = `<div class="node"><span class="f">最高点临界：只有重力提供向心力</span><br>mg = mv顶²/r → v顶 = √(gr) = <span class="v">${fmt(Math.sqrt(I.gr), 2)} m/s</span></div>
+        <div class="link">↓ 机械能守恒：½mv₀² = ½mv顶² + mg·2r</div>
+        <div class="node"><span class="f">v₀ ≥ √(5gr) = ${fmt(I.vminRope, 2)} m/s</span><br>当前 v₀ = ${fmt(st.v0, 2)} m/s</div><div class="link">↓</div>`;
+      if (I.fate === 'loop') html += `<div class="node"><span class="good">能完成圆周运动</span><br>最高点拉力 T顶 = mv顶²/r − mg = <span class="v">${fmt(m * I.vTop2 / st.r - mg, 2)} N</span><br>T底 − T顶 = 6mg = <span class="v">${fmt(6 * mg, 1)} N</span></div>`;
+      else if (I.fate === 'swing') html += `<div class="node"><span class="bad">v₀ ≤ √(2gr) = ${fmt(Math.sqrt(2 * I.gr), 2)} m/s：在水平直径以下来回摆动</span><br>最大摆角 cosφ = 1 − v₀²/(2gr) → φ = <span class="v">${fmt(Math.acos(Math.max(-1, I.swingCos)) / DEG, 1)}°</span><br><span class="n">速度为零时绳仍然拉紧，不会松弛。</span></div>`;
+      else html += `<div class="node"><span class="bad">√(2gr) < v₀ < √(5gr)：绳子会松弛</span><br>T = 0 时 mg·(−cosφ) = mv²/r，结合机械能守恒：<br>cosφ = (2gr − v₀²)/(3gr) → φ = <span class="v">${fmt(Math.acos(I.slackCos) / DEG, 1)}°</span>（在水平直径上方）<br><span class="n">之后小球只受重力，做斜抛运动。</span></div>`;
+    } else {
+      const vt = I.vTop2 >= 0 ? Math.sqrt(I.vTop2) : NaN, Ft = m * I.vTop2 / st.r - mg;
+      html = `<div class="node"><span class="f">杆能推能拉：最高点 v顶 ≥ 0 即可</span><br>机械能守恒：v₀ ≥ 2√(gr) = <span class="v">${fmt(I.vminRod, 2)} m/s</span></div><div class="link">↓ 最高点：mg + F = mv顶²/r</div>`;
+      html += I.fate === 'loop'
+        ? `<div class="node">v顶 = ${fmt(vt, 2)} m/s，F = mv顶²/r − mg = <span class="v">${fmt(Ft, 2)} N</span><br>${Math.abs(Ft) < 0.05 ? '<span class="good">v顶 = √(gr)：杆对球没有作用力</span>' : Ft > 0 ? 'F > 0：v顶 > √(gr)，杆拉球（向下）' : 'F < 0：v顶 < √(gr)，杆推球（向上的支持力）'}</div>`
+        : `<div class="node"><span class="bad">到不了最高点</span>：v₀ < 2√(gr)，小球在下方来回摆动。</div>`;
+    }
+  } else if (st.mode === 'bridge') {
+    const conv = st.bshape === 'convex', vc = Math.sqrt(g * st.R), r = st.bv * st.bv / (g * st.R);
+    tbl = `
+      <tr><td>向心加速度 v²/R</td><td>${fmt(st.bv * st.bv / st.R, 2)} m/s²</td></tr>
+      <tr><td>${conv ? '最高点' : '最低点'} F_N</td><td>${fmt(Math.max(0, conv ? 1 - r : 1 + r), 3)} mg</td></tr>
+      <tr><td>临界速度 √(gR)</td><td>${fmt(vc, 2)} m/s</td></tr>
+      <tr><td>车速</td><td>${fmt(st.bv, 1)} m/s（${fmt(st.bv * 3.6, 0)} km/h）</td></tr>`;
+    html = conv
+      ? `<div class="node"><span class="f">最高点：mg − F_N = mv²/R</span><br>F_N = mg(1 − v²/(gR)) = <span class="v">${fmt(1 - r, 3)} mg</span></div>
+         <div class="link">↓ F_N ≥ 0</div>
+         <div class="node"><span class="f">v ≤ √(gR) = ${fmt(vc, 2)} m/s</span><br>${st.bv < vc ? '<span class="good">能沿桥面通过最高点，失重</span>' : '<span class="bad">会离开桥面</span>'}<br><span class="n">上坡时 F_N = mg cosα − mv²/R 更小（见右图）：</span>${r < 1 && Math.acos(r) < BR_SPAN ? `<br><span class="bad">cosα = v²/(gR) → α = ${fmt(Math.acos(r) / DEG, 1)}°，小于桥面半角 24°，上坡阶段就会腾空</span>` : r >= 1 ? '<br><span class="bad">一上桥就腾空</span>' : ''}</div>`
+      : `<div class="node"><span class="f">最低点：F_N − mg = mv²/R</span><br>F_N = mg(1 + v²/(gR)) = <span class="v">${fmt(1 + r, 3)} mg</span></div>
+         <div class="link">↓</div><div class="node">加速度向上 → 超重；车对路面的压力大于重力。</div>`;
+  } else {
+    const f = bankForces();
+    tbl = `
+      <tr><td>设计速度 v₀ = √(gr·tanθ)</td><td>${fmt(f.v0, 2)} m/s</td></tr>
+      <tr><td>需要的向心加速度 v²/r</td><td>${fmt(f.an, 3)} m/s²</td></tr>
+      <tr><td>重力与支持力合力能提供 g·tanθ</td><td>${fmt(g * Math.tan(st.th * DEG), 3)} m/s²</td></tr>
+      <tr><td>轮缘侧压力</td><td>${fmt(f.F, 3)} mg</td></tr>
+      <tr><td>支持力 F_N</td><td>${fmt(f.N, 3)} mg</td></tr>`;
+    html = `<div class="node"><span class="f">无侧压力时：mg·tanθ = mv₀²/r</span><br>v₀ = √(gr·tanθ) = √(10 × ${st.kr} × ${fmt(Math.tan(st.th * DEG), 4)}) = <span class="v">${fmt(f.v0, 2)} m/s</span></div>
+      <div class="link">↓ 比较实际车速</div>
+      <div class="node">${Math.abs(st.kv - f.v0) < 0.3 ? '<span class="good">v ≈ v₀，内外轨都不受侧压力</span>' : st.kv > f.v0 ? `<span class="bad">v > v₀：需要的向心力更大，外轨受挤压</span>` : `<span class="bad">v < v₀：内轨受挤压</span>`}<br><span class="n">质量 m 在等式两边约去：设计速度与车重无关。</span></div>`;
+  }
+  $('tbl').innerHTML = tbl;
+  $('chain').innerHTML = html;
+}
+
+// ---------- 预设 ----------
+const PRESETS = {
+  vertical: [
+    ['绳模型：恰好过最高点', () => { setModel('rope'); setV0(Math.sqrt(5 * g * st.r)); }],
+    ['绳模型：中途松弛', () => { setModel('rope'); setV0(Math.sqrt(3.6 * g * st.r)); }],
+    ['杆模型：恰好到最高点', () => { setModel('rod'); setV0(2 * Math.sqrt(g * st.r) + 0.01); }],
+    ['杆模型：最高点不受力', () => { setModel('rod'); setV0(Math.sqrt(5 * g * st.r)); }],
+  ],
+  bridge: [
+    ['拱形桥：失重', () => { setShape('convex'); setBv(12); }],
+    ['拱形桥：v = √(gR) 会腾空', () => { setShape('convex'); setBv(Math.round(Math.sqrt(g * st.R) * 2) / 2); }],
+    ['凹形路面：超重', () => { setShape('concave'); setBv(15); }],
+  ],
+  bank: [
+    ['按设计速度通过', () => setKv(Math.round(bankForces().v0 * 2) / 2)],
+    ['超速：外轨受挤压', () => setKv(Math.min(80, Math.round(bankForces().v0 * 1.5))) ],
+    ['低速：内轨受挤压', () => setKv(Math.max(5, Math.round(bankForces().v0 * 0.5)))],
+  ],
+};
+function setModel(m) { st.model = m; Lab.setRadio('model', m); }
+function setV0(v) { st.v0 = Math.min(12, v); $('v0').value = st.v0; Lab.setRange('v0', st.v0); restart(); }
+function setShape(s) { st.bshape = s; Lab.setRadio('bshape', s); }
+function setBv(v) { st.bv = v; Lab.setRange('bv', v); restart(); }
+function setKv(v) { st.kv = v; Lab.setRange('kv', v); render(); }
+function showPresets() {
+  $('presets').innerHTML = '';
+  PRESETS[st.mode].forEach(([name, fn]) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.addEventListener('click', fn);
+    $('presets').appendChild(b);
+  });
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function restart() { resetSim(); if (st.mode !== 'bank') { anim.start(); $('play').textContent = '⏸ 暂停'; } render(); }
+
+const anim = Lab.loop(dt => {
+  if (st.mode === 'vertical') { if (!sim.done) vStep(dt); }
+  else if (st.mode === 'bridge') {
+    if (!bsim.done) bStep(dt);
+    else { bsim.wait = (bsim.wait || 0) + dt; if (bsim.wait > 1.2) resetSim(); }
+  } else return false;
+  render();
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; }
+  else { anim.start(); $('play').textContent = '⏸ 暂停'; }
+});
+$('restart').addEventListener('click', restart);
+Lab.radios('mode', m => { st.mode = m; showPresets(); restart(); });
+Lab.radios('model', m => { st.model = m; restart(); });
+Lab.radios('bshape', s => { st.bshape = s; restart(); });
+Lab.range('v0', v => `${fmt(v, 2)} m/s`, v => { st.v0 = v; restart(); });
+Lab.range('r', v => `${fmt(v, 1)} m`, v => { st.r = v; restart(); });
+Lab.range('m', v => `${fmt(v, 1)} kg`, v => { st.m = v; restart(); });
+Lab.range('bv', v => `${fmt(v, 1)} m/s`, v => { st.bv = v; restart(); });
+Lab.range('R', v => `${v} m`, v => { st.R = v; restart(); });
+Lab.range('th', v => `${fmt(v, 1)}°`, v => { st.th = v; render(); });
+Lab.range('kr', v => `${v} m`, v => { st.kr = v; render(); });
+Lab.range('kv', v => `${fmt(v, 1)} m/s`, v => { st.kv = v; render(); });
+showPresets();
+restart();
+</script>
+</body>
+</html>

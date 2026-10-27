@@ -38,6 +38,14 @@ window.PHET = {
 window.LABS = {
   'electric-field': { name: '电场线与等势线', desc: '拖动电荷，实时看电场线、等势线、场强和电势' },
   'potential-work': { name: '电势差与电场力做功', desc: '沿三条路径移动电荷，验证做功与路径无关' },
+  'chase': { name: '追及相遇与运动图像', desc: '共速时距离最值、刹车陷阱、反应时间；v-t 面积与 x-t 交点', icon: '⇉' },
+  'equilibrium': { name: '动态平衡', desc: '图解法（矢量三角形）、相似三角形、晾衣绳模型', icon: '△' },
+  'block-board': { name: '板块模型与传送带', desc: '自动分段：受力、加速度、共速、相对位移和摩擦生热', icon: '▭' },
+  'projectile': { name: '抛体运动', desc: '频闪分解、tanα = 2tanθ、斜面平抛、擦网临界', icon: '⌒' },
+  'circular-motion': { name: '圆周运动的临界问题', desc: '绳模型与杆模型、汽车过桥、火车转弯', icon: '◔' },
+  'satellite': { name: '卫星运行、变轨与双星', desc: '高轨低速大周期、同步卫星与赤道物体、两次点火变轨', icon: '◎' },
+  'vehicle-power': { name: '机车的两种启动方式', desc: '恒定功率与恒定加速度启动的 v–t、F–t 图像', icon: '⛟' },
+  'collision': { name: '碰撞与动量守恒', desc: '弹性与非弹性碰撞、弹簧连接体、子弹打木块', icon: '⇄' },
   'capacitor': { name: '电容器的动态分析', desc: '拖动极板、插电介质，对比 U 不变和 Q 不变两种情况', icon: '▥' },
   'voltammetry': { name: '伏安法测电阻', desc: '电流表内接、外接的误差对比，试触法选择接法', icon: 'Ⓐ' },
   'closed-circuit': { name: '闭合电路欧姆定律', desc: '拖动滑动变阻器，看路端电压、U–I 图线和输出功率；可换成热敏/光敏电阻', icon: 'Ω' },
@@ -64,7 +72,7 @@ window.CURRICULUM = [
         phet: [],
       },
       {
-        id: 'b1c2', num: '第二章', title: '匀变速直线运动的研究', domain: 'mech', fig: 'vt',
+        id: 'b1c2', num: '第二章', title: '匀变速直线运动的研究', domain: 'mech', fig: 'vt', labs: ['chase'],
         sections: [
           ['实验：探究小车速度随时间变化的规律', '用打点计时器记录位置；用某段时间的平均速度代替中间时刻的瞬时速度，再作 v-t 图像。', 'Δx = aT²（逐差法求 a）'],
           ['匀变速直线运动的速度与时间的关系', 'v-t 图像是一条倾斜直线，斜率等于加速度。', 'v = v₀ + at'],
@@ -75,7 +83,7 @@ window.CURRICULUM = [
         phet: [],
       },
       {
-        id: 'b1c3', num: '第三章', title: '相互作用——力', domain: 'mech', fig: 'incline',
+        id: 'b1c3', num: '第三章', title: '相互作用——力', domain: 'mech', fig: 'incline', labs: ['equilibrium'],
         sections: [
           ['重力与弹力', '重力 G = mg，方向竖直向下；弹力方向垂直于接触面；弹簧弹力遵循胡克定律。', 'F = kx'],
           ['摩擦力', '滑动摩擦力方向与相对运动方向相反；静摩擦力的大小由平衡条件或牛顿第二定律求，0 < f ≤ f_max。', 'f = μF_N（滑动摩擦力）'],
@@ -87,7 +95,7 @@ window.CURRICULUM = [
         phet: ['vector-addition'],
       },
       {
-        id: 'b1c4', num: '第四章', title: '运动和力的关系', domain: 'mech', fig: 'fma',
+        id: 'b1c4', num: '第四章', title: '运动和力的关系', domain: 'mech', fig: 'fma', labs: ['block-board'],
         sections: [
           ['牛顿第一定律', '一切物体总保持匀速直线运动状态或静止状态，除非作用在它上面的力迫使它改变这种状态；质量是惯性大小的唯一量度。'],
           ['实验：探究加速度与力、质量的关系', '控制变量法；先平衡摩擦力；砂桶质量远小于小车质量时，绳的拉力近似等于砂桶重力；作 a-1/M 图像把曲线变直线。'],
@@ -104,7 +112,7 @@ window.CURRICULUM = [
   {
     id: 'b2', name: '必修第二册', chapters: [
       {
-        id: 'b2c5', num: '第五章', title: '抛体运动', domain: 'mech', fig: 'projectile',
+        id: 'b2c5', num: '第五章', title: '抛体运动', domain: 'mech', fig: 'projectile', labs: ['projectile'],
         sections: [
           ['曲线运动', '速度方向沿轨迹的切线方向；合力与速度不在同一直线上时做曲线运动，合力指向轨迹的凹侧。'],
           ['运动的合成与分解', '分运动相互独立、时间相同。小船渡河：船头垂直河岸时渡河时间最短。', 't_min = d / v船'],
@@ -115,7 +123,7 @@ window.CURRICULUM = [
         phet: ['projectile-motion'],
       },
       {
-        id: 'b2c6', num: '第六章', title: '圆周运动', domain: 'mech', fig: 'circle',
+        id: 'b2c6', num: '第六章', title: '圆周运动', domain: 'mech', fig: 'circle', labs: ['circular-motion'],
         sections: [
           ['圆周运动', '用线速度、角速度、周期、转速描述。同轴转动角速度相同；皮带传动轮边缘线速度大小相同。', 'v = ωr = 2πr / T'],
           ['向心力', '由合力或某个力的分力提供，不是一种新的性质力；方向始终指向圆心。', 'F_n = mv²/r = mω²r'],
@@ -126,7 +134,7 @@ window.CURRICULUM = [
         phet: [],
       },
       {
-        id: 'b2c7', num: '第七章', title: '万有引力与宇宙航行', domain: 'mech', fig: 'orbit',
+        id: 'b2c7', num: '第七章', title: '万有引力与宇宙航行', domain: 'mech', fig: 'orbit', labs: ['satellite'],
         sections: [
           ['行星的运动', '开普勒三定律：轨道是椭圆；相等时间扫过相等面积；半长轴三次方与周期平方之比为常量（只与中心天体有关）。', 'a³ / T² = k'],
           ['万有引力定律', '任意两个物体之间都有引力；引力常量 G 由卡文迪什用扭秤测出。', 'F = Gm₁m₂ / r²'],
@@ -138,7 +146,7 @@ window.CURRICULUM = [
         phet: ['gravity-and-orbits', 'keplers-laws'],
       },
       {
-        id: 'b2c8', num: '第八章', title: '机械能守恒定律', domain: 'mech', fig: 'energy',
+        id: 'b2c8', num: '第八章', title: '机械能守恒定律', domain: 'mech', fig: 'energy', labs: ['vehicle-power'],
         sections: [
           ['功与功率', '功的正负表示动力或阻力做功；机车功率 P = Fv。', 'W = Fl cosα，P = W/t = Fv'],
           ['重力势能', '重力做功与路径无关，W_G = −ΔE_p；势能大小与零势能面的选取有关，势能的变化量与之无关。', 'E_p = mgh'],
@@ -216,7 +224,7 @@ window.CURRICULUM = [
   {
     id: 'b4', name: '选择性必修第一册', chapters: [
       {
-        id: 'b4c1', num: '第一章', title: '动量守恒定律', domain: 'mech', fig: 'collision',
+        id: 'b4c1', num: '第一章', title: '动量守恒定律', domain: 'mech', fig: 'collision', labs: ['collision'],
         sections: [
           ['动量', '动量是矢量，方向与速度相同。', 'p = mv'],
           ['动量定理', '合外力的冲量等于物体动量的变化量。', 'FΔt = mv′ − mv'],

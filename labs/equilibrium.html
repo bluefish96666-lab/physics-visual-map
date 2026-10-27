@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>动态平衡 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>动态平衡</b><span class="crumb">必修第一册 · 第三章 相互作用——力</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">物体在三个力作用下缓慢移动，每一时刻都看作平衡：三个力<b>首尾相接组成闭合三角形</b>。看哪个力不变、哪个力方向不变，就能判断其余力怎么变。</div>
+
+    <h2>模型</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="incline" checked>图解法：挡板转动</label>
+      <label class="chk"><input type="radio" name="mode" value="sphere">相似三角形</label>
+      <label class="chk"><input type="radio" name="mode" value="rope">晾衣绳（活结）</label>
+    </div>
+
+    <h2>条件</h2>
+    <div class="row">重力 G <input type="range" id="G" min="5" max="50" step="1" value="20"><span class="val" id="Gv"></span></div>
+    <div id="incPanel">
+      <div class="row">斜面倾角 θ <input type="range" id="th" min="10" max="60" step="1" value="30"><span class="val" id="thv"></span></div>
+      <div class="row">挡板与竖直方向夹角 φ <input type="range" id="ph" min="0" max="90" step="1" value="0"><span class="val" id="phv"></span></div>
+    </div>
+    <div id="sphPanel">
+      <div class="row">滑轮到球心距离 h <input type="range" id="h" min="1.2" max="3" step="0.1" value="2"><span class="val" id="hv"></span></div>
+      <div class="row">小球偏离顶点 α <input type="range" id="al" min="0" max="80" step="1" value="50"><span class="val" id="alv"></span></div>
+    </div>
+    <div id="ropePanel">
+      <div class="row">绳长 L <input type="range" id="L" min="2" max="8" step="0.5" value="5"><span class="val" id="Lv"></span></div>
+      <div class="row">两杆距离 d <input type="range" id="d" min="0.5" max="7.8" step="0.1" value="4"><span class="val" id="dv"></span></div>
+      <div class="row">右端高度差 Δh <input type="range" id="yR" min="-1.5" max="1.5" step="0.1" value="0"><span class="val" id="yRv"></span></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>各力大小</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const DEG = Math.PI / 180;
+const st = { mode: 'incline', G: 20, th: 30, ph: 0, h: 2, al: 50, L: 5, d: 4, yR: 0 };
+let geo = null, sweep = null;
+
+// ---------- 物理 ----------
+function incForces(phDeg = st.ph) {
+  const th = st.th * DEG, ph = phDeg * DEG, c = Math.cos(ph - th);
+  return { N1: st.G * Math.cos(ph) / c, N2: st.G * Math.sin(th) / c };
+}
+const alMax = () => Math.min(80, Math.acos(1 / st.h) / DEG);
+function sphForces(alDeg = st.al) {
+  const a = alDeg * DEG, Lr = Math.sqrt(1 + st.h * st.h - 2 * st.h * Math.cos(a));
+  return { N: st.G / st.h, T: st.G * Lr / st.h, Lr };
+}
+function ropeState(d = st.d) {
+  const s = Math.min(0.999, d / st.L), al = Math.asin(s), c = Math.cos(al);
+  const T = st.G / (2 * c);
+  const L1 = (st.L - st.yR / c) / 2, L2 = (st.L + st.yR / c) / 2;
+  return { al, T, L1, L2, ok: L1 >= 0 && L2 >= 0, hook: [Math.max(0, L1) * s, -Math.max(0, L1) * c] };
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+const add = (p, v, k = 1) => [p[0] + v[0] * k, p[1] + v[1] * k];
+function force(c, p, dir, len, color, label) {
+  const e = add(p, dir, len);
+  vec(c, p[0], p[1], e[0], e[1], color, 3, 10);
+  const off = add(e, dir, 16);
+  text(c, label, off[0], off[1], color, { bold: true, size: 13 });
+}
+function rightAngle(c, p, u, v, s = 9, color = '#6b7280') {
+  c.beginPath(); c.moveTo(p[0] + u[0] * s, p[1] + u[1] * s);
+  c.lineTo(p[0] + (u[0] + v[0]) * s, p[1] + (u[1] + v[1]) * s);
+  c.lineTo(p[0] + v[0] * s, p[1] + v[1] * s);
+  c.strokeStyle = color; c.lineWidth = 1.2; c.stroke();
+}
+// 力的矢量三角形：从 O 起，G 向下，再接 F1（方向 u1），最后 F2 回到 O
+function triangle(c, O, G, F1, u1, k, labels, colors, extra) {
+  const Q1 = [O[0], O[1] + G * k], Q2 = add(Q1, u1, F1 * k);
+  c.fillStyle = 'rgba(124,58,237,.07)';
+  c.beginPath(); c.moveTo(O[0], O[1]); c.lineTo(Q1[0], Q1[1]); c.lineTo(Q2[0], Q2[1]); c.closePath(); c.fill();
+  if (extra) extra(Q1, Q2);
+  vec(c, O[0], O[1], Q1[0], Q1[1], colors[0], 3, 10);
+  vec(c, Q1[0], Q1[1], Q2[0], Q2[1], colors[1], 3, 10);
+  vec(c, Q2[0], Q2[1], O[0], O[1], colors[2], 3, 10);
+  text(c, labels[0], O[0] - 10, (O[1] + Q1[1]) / 2, colors[0], { bold: true, size: 13, align: 'right' });
+  const m1 = [(Q1[0] + Q2[0]) / 2, (Q1[1] + Q2[1]) / 2], m2 = [(Q2[0] + O[0]) / 2, (Q2[1] + O[1]) / 2];
+  text(c, labels[1], m1[0] + 12, m1[1] + 10, colors[1], { bold: true, size: 13, align: 'left' });
+  text(c, labels[2], m2[0] + 12, m2[1] - 8, colors[2], { bold: true, size: 13, align: 'left' });
+  return { Q1, Q2 };
+}
+
+function drawIncline(c, W, H) {
+  const th = st.th * DEG, ph = st.ph * DEG, { N1, N2 } = incForces();
+  const r = Math.min(44, H * 0.09), C = [W * 0.3, H * 0.5];
+  const n1 = [Math.sin(th), -Math.cos(th)], n2 = [-Math.cos(ph), -Math.sin(ph)];
+  const us = [Math.cos(th), Math.sin(th)], bs = [Math.sin(ph), -Math.cos(ph)];
+  const P1 = add(C, n1, -r), P2 = add(C, n2, -r);
+  const det = -us[0] * bs[1] + bs[0] * us[1], rx = P2[0] - P1[0], ry = P2[1] - P1[1];
+  const s = (rx * -bs[1] + bs[0] * ry) / det;
+  const hinge = add(P1, us, s);
+  // 斜面与地面
+  const A = add(P1, us, -W), yg = Math.max(hinge[1], C[1] + r) + 40;
+  const B = add(P1, us, (yg - P1[1]) / us[1]);
+  c.fillStyle = '#e7e5e4';
+  c.beginPath(); c.moveTo(A[0], A[1]); c.lineTo(B[0], B[1]); c.lineTo(A[0], yg); c.closePath(); c.fill();
+  line(c, A[0], A[1], B[0], B[1], '#57534e', 2.5);
+  line(c, 0, yg, W * 0.58, yg, '#57534e', 2.5);
+  c.beginPath(); c.arc(B[0], B[1], 40, Math.PI, Math.PI + th); c.strokeStyle = '#57534e'; c.lineWidth = 1.5; c.stroke();
+  text(c, `θ = ${st.th}°`, B[0] - 30, yg + 14, '#57534e', { size: 12, bold: true });
+  // 挡板
+  const blen = Math.hypot(P2[0] - hinge[0], P2[1] - hinge[1]) + r * 1.3;
+  const E = add(hinge, bs, blen);
+  line(c, hinge[0], hinge[1], E[0], E[1], '#92400e', 6);
+  dot(c, hinge[0], hinge[1], 5, '#92400e');
+  dot(c, E[0], E[1], 7, '#f59e0b', '#92400e');
+  text(c, '拖动挡板', E[0] + 12, E[1] - 4, '#92400e', { size: 12, align: 'left' });
+  // 球
+  c.fillStyle = '#cbd5e1'; c.beginPath(); c.arc(C[0], C[1], r, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#475569'; c.lineWidth = 2; c.stroke();
+  const k = 70 / st.G;
+  force(c, C, [0, 1], st.G * k, '#111827', 'G');
+  force(c, C, n1, N1 * k, '#2563eb', 'N₁');
+  force(c, C, n2, N2 * k, '#dc2626', 'N₂');
+  // 矢量三角形
+  const O = [W * 0.72, H * 0.12], kT = Math.min(H * 0.6 / st.G, W * 0.22 / (st.G * Math.tan(th)));
+  const u1 = n1;
+  text(c, '力的矢量三角形', O[0], O[1] - 34, '#7c3aed', { bold: true, size: 13 });
+  triangle(c, O, st.G, N1, u1, kT, ['G', 'N₁', 'N₂'], ['#111827', '#2563eb', '#dc2626'], (Q1) => {
+    const end = add(Q1, u1, st.G / Math.cos(th) * kT * 1.08);
+    line(c, Q1[0], Q1[1], end[0], end[1], '#93c5fd', 1.5, [6, 4]);
+    for (let p = 0; p <= 90; p += 10) {
+      const q = add(Q1, u1, incForces(p).N1 * kT);
+      line(c, q[0], q[1], O[0], O[1], 'rgba(220,38,38,.18)', 1);
+    }
+    const Qm = add(Q1, u1, st.G * Math.cos(th) * kT);
+    const back = [O[0] - Qm[0], O[1] - Qm[1]], bl = Math.hypot(...back);
+    rightAngle(c, Qm, [-u1[0], -u1[1]], [back[0] / bl, back[1] / bl]);
+  });
+  text(c, 'N₁ 方向不变：N₂ 的终点只能沿蓝色虚线滑动', O[0] + W * 0.04, H - 64, '#6b7280', { size: 12 });
+  text(c, 'N₂ ⊥ N₁（直角标记处）时 N₂ 最小 = G sinθ', O[0] + W * 0.04, H - 44, '#dc2626', { size: 12 });
+  geo = { E, hinge };
+}
+
+function drawSphere(c, W, H) {
+  const a = st.al * DEG, { N, T, Lr } = sphForces();
+  const R = Math.min(H * 0.25, W * 0.18), rb = 12, O = [W * 0.3, H * 0.86], P = [O[0], O[1] - st.h * R];
+  const B = [O[0] + R * Math.sin(a), O[1] - R * Math.cos(a)];
+  line(c, 0, O[1], W * 0.58, O[1], '#57534e', 2.5);
+  c.fillStyle = '#e7e5e4'; c.beginPath(); c.arc(O[0], O[1], R - rb, Math.PI, 0); c.closePath(); c.fill();
+  c.strokeStyle = '#57534e'; c.lineWidth = 2; c.stroke();
+  // 相似三角形 OBP
+  c.fillStyle = 'rgba(22,163,74,.10)';
+  c.beginPath(); c.moveTo(O[0], O[1]); c.lineTo(B[0], B[1]); c.lineTo(P[0], P[1]); c.closePath(); c.fill();
+  line(c, O[0], O[1], P[0], P[1], '#16a34a', 1.5, [5, 4]);
+  line(c, O[0], O[1], B[0], B[1], '#16a34a', 1.5, [5, 4]);
+  text(c, `h = ${fmt(st.h, 1)}R`, P[0] - 8, O[1] - (O[1] - P[1]) * 0.3, '#16a34a', { bold: true, size: 12, align: 'right' });
+  text(c, 'R', (O[0] + B[0]) / 2 + 10, (O[1] + B[1]) / 2 + 10, '#16a34a', { bold: true, size: 12 });
+  // 天花板、滑轮、绳
+  line(c, P[0] - 40, P[1] - 22, P[0] + 40, P[1] - 22, '#57534e', 3);
+  line(c, P[0], P[1] - 22, P[0], P[1], '#57534e', 2);
+  dot(c, P[0], P[1], 8, '#fff', '#57534e');
+  line(c, B[0], B[1], P[0], P[1], '#a16207', 2);
+  const Lmax = sphForces(alMax()).Lr, hy = P[1] + 30 + (Lmax - Lr) * R;
+  line(c, P[0] - 8, P[1], P[0] - 8, hy, '#a16207', 2);
+  vec(c, P[0] - 8, hy, P[0] - 8, hy + 30, '#a16207', 2.5, 8);
+  text(c, '缓慢拉绳', P[0] - 16, hy + 20, '#a16207', { size: 12, align: 'right' });
+  text(c, `L = ${fmt(Lr, 2)}R`, (B[0] + P[0]) / 2 + 12, (B[1] + P[1]) / 2, '#16a34a', { bold: true, size: 12, align: 'left' });
+  dot(c, B[0], B[1], rb, '#cbd5e1', '#475569');
+  const k = 70 / st.G, nb = [Math.sin(a), -Math.cos(a)], tl = Math.hypot(P[0] - B[0], P[1] - B[1]), tb = [(P[0] - B[0]) / tl, (P[1] - B[1]) / tl];
+  force(c, B, [0, 1], st.G * k, '#111827', 'G');
+  force(c, B, nb, N * k, '#2563eb', 'N');
+  force(c, B, tb, T * k, '#dc2626', 'T');
+  const Ot = [W * 0.76, H * 0.1], kT = H * 0.55 / st.G;
+  text(c, '力的矢量三角形 ∽ △OBP', Ot[0], Ot[1] - 34, '#7c3aed', { bold: true, size: 13 });
+  triangle(c, Ot, st.G, N, nb, kT, ['G ↔ h', 'N ↔ R', 'T ↔ L'], ['#111827', '#2563eb', '#dc2626']);
+  text(c, 'G/h = N/R = T/L', Ot[0], H - 46, '#16a34a', { size: 14, bold: true });
+  geo = { O, R, B };
+}
+
+function drawRope(c, W, H) {
+  const rs = ropeState(), { al, T } = rs;
+  const k = Math.min(W * 0.48 / st.L, H * 0.6 / (st.L / 2 + 1.7));
+  const x0 = W * 0.06, y0 = H * 0.14 + 1.5 * k, yg = H - 50;
+  const Lp = [x0, y0], Rp = [x0 + st.d * k, y0 - st.yR * k];
+  line(c, 0, yg, W * 0.62, yg, '#57534e', 2.5);
+  line(c, Lp[0], yg, Lp[0], Lp[1] - 6, '#78716c', 6);
+  line(c, Rp[0], yg, Rp[0], Rp[1] - 6, '#78716c', 6);
+  const Hk = [x0 + rs.hook[0] * k, y0 - rs.hook[1] * k];
+  line(c, Lp[0], Lp[1], Hk[0], Hk[1], '#a16207', 2.2);
+  line(c, Hk[0], Hk[1], Rp[0], Rp[1], '#a16207', 2.2);
+  dot(c, Rp[0], Rp[1], 7, '#f59e0b', '#92400e');
+  text(c, '拖动右端', Rp[0] + 12, Rp[1] - 12, '#92400e', { size: 12, align: 'left' });
+  // 竖直参考线与角度
+  line(c, Hk[0], Hk[1], Hk[0], Hk[1] - 70, '#9ca3af', 1, [4, 4]);
+  c.strokeStyle = '#7c3aed'; c.lineWidth = 1.5;
+  c.beginPath(); c.arc(Hk[0], Hk[1], 30, -Math.PI / 2 - al, -Math.PI / 2 + al); c.stroke();
+  text(c, `α = ${fmt(al / DEG, 1)}°`, Hk[0], Hk[1] - 84, '#7c3aed', { bold: true, size: 12 });
+  // 重物
+  line(c, Hk[0], Hk[1], Hk[0], Hk[1] + 26, '#57534e', 1.5);
+  c.fillStyle = '#94a3b8'; c.fillRect(Hk[0] - 16, Hk[1] + 26, 32, 26);
+  text(c, 'G', Hk[0], Hk[1] + 39, '#fff', { bold: true, size: 13, halo: false });
+  dot(c, Hk[0], Hk[1], 6, '#fff', '#57534e');
+  const kf = Math.min(70 / st.G, 140 / T), u1 = [-Math.sin(al), -Math.cos(al)], u2 = [Math.sin(al), -Math.cos(al)];
+  force(c, Hk, u1, T * kf, '#2563eb', 'T₁');
+  force(c, Hk, u2, T * kf, '#dc2626', 'T₂');
+  if (!rs.ok) text(c, '高度差过大：一段绳已经拉直，挂钩滑到一端', W * 0.3, 24, '#dc2626', { bold: true, size: 13 });
+  const Ot = [W * 0.8, H * 0.1], kT = Math.min(H * 0.55 / st.G, W * 0.15 / (st.G / 2 * Math.tan(al) + 1e-6));
+  text(c, '力的矢量三角形（等腰）', Ot[0], Ot[1] - 34, '#7c3aed', { bold: true, size: 13 });
+  triangle(c, Ot, st.G, T, u2, kT, ['G', 'T₂', 'T₁'], ['#111827', '#dc2626', '#2563eb']);
+  text(c, '2T cosα = G', Ot[0], H - 46, '#7c3aed', { size: 14, bold: true });
+  geo = { x0, y0, k, Rp };
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  line(c, W * 0.6, 20, W * 0.6, H - 20, '#e5e7eb', 1);
+  if (st.mode === 'incline') drawIncline(c, W, H);
+  else if (st.mode === 'sphere') drawSphere(c, W, H);
+  else drawRope(c, W, H);
+}
+
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    if (!geo) return null;
+    if (st.mode === 'incline' && Math.hypot(px - geo.E[0], py - geo.E[1]) < rad + 6) return 'board';
+    if (st.mode === 'sphere' && Math.hypot(px - geo.B[0], py - geo.B[1]) < rad + 8) return 'ball';
+    if (st.mode === 'rope' && Math.hypot(px - geo.Rp[0], py - geo.Rp[1]) < rad + 6) return 'end';
+    return null;
+  },
+  move(w, px, py) {
+    sweep = null;
+    if (w === 'board') {
+      const ph = Math.atan2(px - geo.hinge[0], geo.hinge[1] - py) / DEG;
+      st.ph = Math.round(Math.max(0, Math.min(90, ph)));
+      Lab.setRange('ph', st.ph);
+    } else if (w === 'ball') {
+      const a = Math.atan2(px - geo.O[0], geo.O[1] - py) / DEG;
+      st.al = Math.round(Math.max(0, Math.min(alMax(), a)));
+      Lab.setRange('al', st.al);
+    } else {
+      st.d = Math.round(Math.max(0.5, Math.min(st.L * 0.98, (px - geo.x0) / geo.k)) * 10) / 10;
+      st.yR = Math.round(Math.max(-1.5, Math.min(1.5, (geo.y0 - py) / geo.k)) * 10) / 10;
+      Lab.setRange('d', st.d); Lab.setRange('yR', st.yR);
+    }
+    render();
+  },
+});
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, box = { x: 0, y: 0, w: W, h: H };
+  chartView.begin();
+  const curve = (f, a, b) => Array.from({ length: 181 }, (_, i) => { const x = a + (b - a) * i / 180; return [x, f(x)]; });
+  if (st.mode === 'incline') {
+    const n1 = curve(p => incForces(p).N1, 0, 90), n2 = curve(p => incForces(p).N2, 0, 90), cur = incForces();
+    Lab.plot(c, box, {
+      xmin: 0, xmax: 90, ymin: 0, ymax: Math.max(...n1.map(q => q[1]), st.G) * 1.15, xlabel: '挡板与竖直方向夹角 φ / °', ylabel: '力 / N', legendX: 120,
+      series: [{ pts: n1, color: '#2563eb', label: 'N₁（斜面支持力）' }, { pts: n2, color: '#dc2626', label: 'N₂（挡板弹力）' }],
+      hlines: [{ y: st.G, color: '#9ca3af', label: `G = ${st.G} N` }],
+      vlines: [{ x: st.th, color: '#dc2626', label: `φ = θ：挡板⊥斜面，N₂ 最小 = ${fmt(st.G * Math.sin(st.th * DEG), 2)} N` }],
+      points: [{ x: st.ph, y: cur.N1, color: '#2563eb' }, { x: st.ph, y: cur.N2, color: '#dc2626' }],
+    });
+  } else if (st.mode === 'sphere') {
+    const am = alMax(), Ns = curve(a => sphForces(a).N, 0, am), Ts = curve(a => sphForces(a).T, 0, am), cur = sphForces();
+    Lab.plot(c, box, {
+      xmin: 0, xmax: am, ymin: 0, ymax: st.G * 1.15, xlabel: '小球偏离顶点的角度 α / °（缓慢拉绳时 α 减小）', ylabel: '力 / N', legendX: 120,
+      series: [{ pts: Ns, color: '#2563eb', label: 'N（支持力，不变）' }, { pts: Ts, color: '#dc2626', label: 'T（拉力）' }],
+      hlines: [{ y: st.G, color: '#9ca3af', label: `G = ${st.G} N` }],
+      points: [{ x: st.al, y: cur.N, color: '#2563eb' }, { x: st.al, y: cur.T, color: '#dc2626' }],
+    });
+  } else {
+    const dm = st.L * 0.98, Ts = curve(d => ropeState(d).T, 0, dm), cur = ropeState();
+    Lab.plot(c, box, {
+      xmin: 0, xmax: st.L, ymin: 0, ymax: Math.min(Ts[Ts.length - 1][1], st.G * 3) * 1.1, xlabel: '两杆距离 d / m', ylabel: '绳的拉力 T / N', legendX: 120,
+      series: [{ pts: Ts, color: '#dc2626', label: `T = G/(2cosα)，sinα = d/L（L = ${st.L} m）` }],
+      hlines: [{ y: st.G / 2, color: '#9ca3af', label: 'd → 0：T = G/2' }],
+      vlines: [{ x: st.L, color: '#9ca3af', label: 'd = L' }],
+      points: [{ x: st.d, y: cur.T, color: '#dc2626', label: `${fmt(cur.T, 2)} N` }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  incline: [
+    '图解法适用：一个力大小方向都不变（通常是重力），另一个力方向不变，第三个力方向改变。',
+    '画法：先画不变的 G，再从 G 的末端沿不变的方向画 N₁ 的作用线，N₂ 从这条线连回 G 的起点。',
+    '当变化的力与方向不变的力垂直时，它最小。本题挡板垂直斜面时 N₂ 最小 = G sinθ。',
+    '挡板从竖直缓慢转到水平：N₁ 一直减小，N₂ 先减小后增大。',
+  ],
+  sphere: [
+    '相似三角形法适用：只有重力不变，另外两个力的方向都在变，但能找到与力三角形相似的几何三角形。',
+    '对应边成比例：G/h = N/R = T/L。h、R 不变，所以支持力 N 大小不变；绳长 L 变短，拉力 T 变小。',
+    '轻杆一端用铰链固定、另一端用绳拉住（"绳-杆"模型）也是同样的方法：杆的弹力不变。',
+  ],
+  rope: [
+    '活结（光滑挂钩、滑轮）两侧是同一根绳，拉力相等，两侧与竖直方向夹角也相等。',
+    '几何关系 sinα = d/L：α 只由两杆距离 d 和绳长 L 决定，与两端的高度无关。',
+    '所以只把一端上下移动，α 不变，拉力 T = G/(2cosα) 不变；两杆距离变大，T 变大。',
+    '死结（绳子打结固定）两侧拉力一般不相等，不能这样处理。',
+  ],
+};
+function updatePanel() {
+  ['incPanel', 'sphPanel', 'ropePanel'].forEach((id, i) => { $(id).style.display = ['incline', 'sphere', 'rope'][i] === st.mode ? '' : 'none'; });
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  const G = st.G;
+  let rows = `<tr><td>重力 G</td><td>${G} N</td></tr>`, html = '';
+  if (st.mode === 'incline') {
+    $('hint').textContent = '拖动挡板上端的黄点，或拖滑块 φ：挡板从竖直缓慢转到水平';
+    const { N1, N2 } = incForces(), th = st.th * DEG;
+    rows += `<tr><td>斜面支持力 N₁</td><td>${fmt(N1, 2)} N</td></tr><tr><td>挡板弹力 N₂</td><td>${fmt(N2, 2)} N</td></tr>`;
+    html = `<div class="node"><span class="f">受力：G 不变；N₁ 垂直斜面，方向不变；N₂ 垂直挡板，方向随挡板转动</span></div>
+      <div class="link">↓ 三力平衡：首尾相接成闭合三角形</div>
+      <div class="node"><span class="f">N₂ = G sinθ / cos(φ − θ)</span> = ${G} × ${fmt(Math.sin(th), 3)} ÷ ${fmt(Math.cos((st.ph - st.th) * DEG), 3)} = <span class="v">${fmt(N2, 2)} N</span><br>
+        <span class="f">N₁ = G cosφ / cos(φ − θ)</span> = <span class="v">${fmt(N1, 2)} N</span></div>
+      <div class="link">↓ 挡板从竖直（φ = 0）转到水平（φ = 90°）</div>
+      <div class="node"><span class="n">N₁：${fmt(G / Math.cos(th), 2)} N → 0，一直减小</span><br>
+        <span class="n">N₂：${fmt(G * Math.tan(th), 2)} N → 最小 ${fmt(G * Math.sin(th), 2)} N（φ = θ = ${st.th}°）→ ${G} N，先减小后增大</span></div>`;
+  } else if (st.mode === 'sphere') {
+    $('hint').textContent = '拖动小球，或拖滑块 α：缓慢拉绳时小球沿光滑球面上移';
+    const { N, T, Lr } = sphForces();
+    rows += `<tr><td>球面支持力 N</td><td>${fmt(N, 2)} N</td></tr><tr><td>绳的拉力 T</td><td>${fmt(T, 2)} N</td></tr>`;
+    html = `<div class="node"><span class="f">受力：G 不变；N 沿半径向外；T 沿绳指向滑轮。后两个力的方向都在变 → 图解法不好用</span></div>
+      <div class="link">↓ 找相似三角形：力三角形 ∽ △OBP（G ∥ OP，N ∥ OB，T ∥ BP）</div>
+      <div class="node"><span class="f">G/h = N/R = T/L</span><br><span class="n">h = ${fmt(st.h, 1)}R，R，L = ${fmt(Lr, 3)}R</span></div>
+      <div class="link">↓</div>
+      <div class="node"><span class="f">N = G·R/h</span> = ${G} ÷ ${fmt(st.h, 1)} = <span class="v">${fmt(N, 2)} N</span><br><span class="f">T = G·L/h</span> = ${G} × ${fmt(Lr, 3)} ÷ ${fmt(st.h, 1)} = <span class="v">${fmt(T, 2)} N</span></div>
+      <div class="link">↓ 缓慢拉绳：h、R 不变，L 减小</div>
+      <div class="node"><span class="v">N 大小不变，T 减小</span></div>`;
+  } else {
+    $('hint').textContent = '拖动右端黄点：左右移动改变 d，上下移动改变高度差';
+    const rs = ropeState();
+    rows += `<tr><td>两侧绳的拉力 T₁ = T₂</td><td>${fmt(rs.T, 2)} N</td></tr><tr><td>绳与竖直方向夹角 α</td><td>${fmt(rs.al / DEG, 2)}°</td></tr>`;
+    html = `<div class="node"><span class="f">活结：同一根绳，T₁ = T₂ = T；水平方向平衡 → 两侧与竖直方向夹角相等</span></div>
+      <div class="link">↓ 几何：把两段绳"拉直"到一侧，水平总长 = d</div>
+      <div class="node"><span class="f">sinα = d/L</span> = ${fmt(st.d, 1)} ÷ ${st.L} = ${fmt(Math.sin(rs.al), 3)} → <span class="v">α = ${fmt(rs.al / DEG, 2)}°</span></div>
+      <div class="link">↓ 竖直方向平衡</div>
+      <div class="node"><span class="f">2T cosα = G → T = G/(2cosα)</span> = ${G} ÷ (2 × ${fmt(Math.cos(rs.al), 3)}) = <span class="v">${fmt(rs.T, 2)} N</span></div>
+      <div class="link">↓ 结论</div>
+      <div class="node"><span class="n">只上下移动一端：d、L 不变 → α 不变 → T 不变（现在 Δh = ${fmt(st.yR, 1)} m）</span><br><span class="n">两杆距离 d 增大 → α 增大 → T 增大</span></div>`;
+    if (!rs.ok) html += '<div class="node"><span class="n">高度差太大时挂钩滑到最低的一端，一段绳拉直，上面的公式不再适用。</span></div>';
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+const anim = Lab.loop(dt => {
+  if (!sweep) return false;
+  sweep.t = Math.min(sweep.dur, sweep.t + dt);
+  const v = sweep.from + (sweep.to - sweep.from) * sweep.t / sweep.dur;
+  st[sweep.key] = v; Lab.setRange(sweep.key, v);
+  render();
+  if (sweep.t >= sweep.dur) { sweep = null; return false; }
+});
+const RNG = { G: v => `${v} N`, th: v => `${v}°`, ph: v => `${v}°`, h: v => `${fmt(v, 1)} R`, al: v => `${v}°`, L: v => `${fmt(v, 1)} m`, d: v => `${fmt(v, 1)} m`, yR: v => `${fmt(v, 1)} m` };
+Object.keys(RNG).forEach(k => Lab.range(k, RNG[k], v => {
+  sweep = null; st[k] = v;
+  if (k === 'h' || k === 'al') { st.al = Math.min(st.al, alMax()); Lab.setRange('al', Math.round(st.al)); }
+  if (k === 'L' || k === 'd') { st.d = Math.min(st.d, st.L * 0.98); Lab.setRange('d', st.d); }
+  render();
+}));
+Lab.radios('mode', m => { st.mode = m; sweep = null; render(); });
+
+const PRESETS = [
+  ['挡板缓慢转到水平', { mode: 'incline', th: 30, ph: 0 }, { key: 'ph', from: 0, to: 90, dur: 5 }],
+  ['挡板垂直斜面：N₂ 最小', { mode: 'incline', th: 30, ph: 30 }],
+  ['球面上缓慢拉绳', { mode: 'sphere', h: 2, al: 60 }, { key: 'al', from: 60, to: 0, dur: 5 }],
+  ['晾衣绳：一端上移', { mode: 'rope', L: 5, d: 4, yR: -1.2 }, { key: 'yR', from: -1.2, to: 1.2, dur: 4 }],
+  ['晾衣绳：杆向外移', { mode: 'rope', L: 5, d: 2, yR: 0 }, { key: 'd', from: 2, to: 4.6, dur: 4 }],
+];
+PRESETS.forEach(([name, o, sw]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, o);
+    Lab.setRadio('mode', st.mode);
+    Object.keys(RNG).forEach(k => Lab.setRange(k, st[k]));
+    sweep = sw ? { ...sw, t: 0 } : null;
+    render();
+    if (sweep) { anim.stop(); anim.start(); }
+  });
+  $('presets').appendChild(btn);
+});
+render();
+</script>
+</body>
+</html>

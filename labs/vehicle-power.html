@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>机车启动 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>机车的两种启动方式</b><span class="crumb">必修第二册 · 第八章 机械能守恒定律</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">P = Fv：功率一定时，速度越大牵引力越小</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">两个关键式子：<b>P = Fv</b> 和 <b>F − f = ma</b>。速度最大时 a = 0，F = f，所以 v_max = P额/f。</div>
+
+    <h2>启动方式</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="power" checked>以恒定功率启动</label>
+      <label class="chk"><input type="radio" name="mode" value="acc">以恒定加速度启动</label>
+    </div>
+
+    <h2>条件</h2>
+    <div class="row">质量 m <input type="range" id="m" min="500" max="5000" step="100" value="2000"><span class="val" id="mv"></span></div>
+    <div class="row">额定功率 P额 <input type="range" id="P" min="20" max="200" step="5" value="80"><span class="val" id="Pv"></span></div>
+    <div class="row">阻力 f <input type="range" id="f" min="500" max="10000" step="100" value="4000"><span class="val" id="fv"></span></div>
+    <div class="row" id="aRow">加速度 a <input type="range" id="a" min="0.2" max="5" step="0.1" value="2"><span class="val" id="av"></span></div>
+    <div class="row">坡度 θ <input type="range" id="th" min="0" max="10" step="0.5" value="0"><span class="val" id="thv"></span></div>
+
+    <h2>高考题型</h2>
+    <div class="grid">
+      <button data-preset="p">恒定功率启动</button>
+      <button data-preset="a">恒定加速度启动</button>
+      <button data-preset="slope">上坡时的最大速度</button>
+      <button data-preset="compare">两种方式对比</button>
+    </div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 启动</button><button id="fast">快进 3×</button></div>
+    <div class="row">时刻 t <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2>当前时刻</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul>
+        <li>恒定功率启动：v 增大 → F = P/v 减小 → a = (F − f)/m 减小，做加速度减小的加速运动，最后以 v_max = P/f 匀速。</li>
+        <li>恒定加速度启动：先匀加速，F = f + ma 不变，功率 P = Fv 随 v 均匀增大；P 达到额定功率时匀加速结束，此时 v₁ = P额/(f + ma) < v_max。</li>
+        <li>之后功率保持额定值，做加速度减小的加速运动，最终 v_max = P额/f。两种方式的最大速度相同。</li>
+        <li>匀加速阶段的时间 t₁ = v₁/a；牵引力做功 W = F·x₁（恒力）。</li>
+        <li>功率恒定阶段的牵引力做功 W = Pt（不能用 Fx），常与动能定理结合：Pt − fx = ½mv₂² − ½mv₁²。</li>
+        <li>上坡时阻力要加上重力的分力 mg sinθ：v_max = P/(f + mg sinθ)。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const g = 10, DEG = Math.PI / 180, DT = 0.005;
+const st = { mode: 'power', m: 2000, P: 80, f: 4000, a: 2, th: 0, t: 0, fast: 1, compare: false };
+let run = null, other = null;
+
+// 恒定功率起步时速度为零，牵引力不能无限大：限制在 3 倍总阻力
+function simulate(mode) {
+  const m = st.m, P = st.P * 1000, fr = st.f + m * g * Math.sin(st.th * DEG);
+  const vmax = P / fr, Fa = fr + m * st.a, v1 = mode === 'acc' ? P / Fa : 0, t1 = mode === 'acc' ? v1 / st.a : 0;
+  const Fcap = 3 * fr;
+  let v = 0, x = 0, t = 0, W = 0, Wf = 0, x1 = 0;
+  const pts = [];
+  const Tend = Math.min(200, Math.max(20, t1 + 5 * m * vmax / fr));
+  while (t <= Tend) {
+    let F, phase;
+    if (mode === 'acc' && v < v1 - 1e-9) { F = Fa; phase = 1; }
+    else { F = Math.min(P / Math.max(v, 1e-6), mode === 'acc' ? Fa : Fcap); phase = 2; }
+    const a = (F - fr) / m;
+    if (pts.length === 0 || t - pts[pts.length - 1].t >= 0.05 - 1e-9) pts.push({ t, v, x, F, a, P: F * v, W, Wf, phase });
+    const nv = v + a * DT;
+    const dx = (v + nv) / 2 * DT;
+    W += F * dx; Wf += fr * dx; x += dx;
+    if (phase === 1) x1 = x;
+    v = nv; t += DT;
+  }
+  return { pts, T: Tend, vmax, v1, t1, Fa, fr, x1, mode };
+}
+function sample(r, t) { return r.pts[Math.min(r.pts.length - 1, Math.max(0, Math.round(t / 0.05)))]; }
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+function drawCarAt(c, x, y, s, color, ang) {
+  c.save(); c.translate(x, y); c.rotate(-ang);
+  c.fillStyle = color; c.fillRect(-s, -s * 0.85, s * 2, s * 0.55);
+  c.fillStyle = 'rgba(255,255,255,.75)'; c.fillRect(-s * 0.45, -s * 1.25, s * 1.0, s * 0.42);
+  c.strokeStyle = color; c.lineWidth = 2; c.strokeRect(-s * 0.5, -s * 1.28, s * 1.1, s * 0.45);
+  dot(c, -s * 0.6, -s * 0.22, s * 0.24, '#111827', null);
+  dot(c, s * 0.6, -s * 0.22, s * 0.24, '#111827', null);
+  c.restore();
+}
+function gauge(c, x, y, r, val, max, label, unit, color) {
+  c.beginPath(); c.arc(x, y, r, Math.PI * 0.8, Math.PI * 2.2); c.strokeStyle = '#e5e7eb'; c.lineWidth = 8; c.stroke();
+  const f = Math.max(0, Math.min(1, val / max));
+  c.beginPath(); c.arc(x, y, r, Math.PI * 0.8, Math.PI * (0.8 + 1.4 * f)); c.strokeStyle = color; c.lineWidth = 8; c.stroke();
+  text(c, fmt(val, 1), x, y - 2, '#111827', { bold: true, size: 16 });
+  text(c, unit, x, y + 16, '#6b7280', { size: 11 });
+  text(c, label, x, y + r + 12, color, { bold: true, size: 12 });
+}
+
+function draw() {
+  if (!view.W || !run) return;
+  const c = ctx, W = view.W, H = view.H, p = sample(run, st.t), th = st.th * DEG;
+  view.begin();
+  // 道路（随车移动）
+  const gap = st.compare && other ? Math.abs(sample(other, st.t).x - p.x) : 0;
+  const gy = H * 0.66, k = Math.min(9, (W * 0.5) / Math.max(gap, 1));   // 最多 9 px / m，对比时缩小以同时看到两辆车
+  const cam = p.x;
+  c.save(); c.translate(W * 0.4, gy); c.rotate(-th);
+  c.fillStyle = '#e7e5e4'; c.fillRect(-W, 0, W * 3, H);
+  line(c, -W, 0, W * 2, 0, '#57534e', 3);
+  const step = Lab.niceStep(W / k, 8);
+  for (let x = Math.floor((cam - W / k) / step) * step; x < cam + 2 * W / k; x += step) {
+    const sx = (x - cam) * k;
+    line(c, sx, 0, sx, 10, '#a8a29e', 1.5);
+    text(c, `${x} m`, sx, 22, '#a8a29e', { size: 10, halo: false });
+  }
+  c.restore();
+  const s = 26;
+  if (st.compare && other) {
+    const q = sample(other, st.t), dx = (q.x - p.x) * k;
+    drawCarAt(c, W * 0.4 + dx * Math.cos(th), gy - dx * Math.sin(th) - 2, s * 0.8, 'rgba(124,58,237,.55)', th);
+    text(c, other.mode === 'acc' ? '恒定加速度' : '恒定功率', W * 0.4 + dx * Math.cos(th), gy - dx * Math.sin(th) - s * 1.6, '#7c3aed', { size: 11, bold: true });
+  }
+  drawCarAt(c, W * 0.4, gy - 2, s, '#ea580c', th);
+  // 力：牵引力 F 与总阻力（以 F_max 为 90 px）
+  const Fmax = Math.max(run.Fa || 0, 3 * run.fr), kf = 90 / Fmax;
+  const ox = W * 0.4, oy = gy - s * 0.6;
+  const ux = Math.cos(th), uy = -Math.sin(th);
+  if (st.t < run.T) {
+    vec(c, ox + ux * s, oy + uy * s, ox + ux * (s + p.F * kf), oy + uy * (s + p.F * kf), '#2563eb', 3, 9);
+    text(c, `F = ${fmt(p.F / 1000, 2)} kN`, ox + ux * (s + p.F * kf) + 8, oy + uy * (s + p.F * kf) - 12, '#2563eb', { bold: true, size: 12, align: 'left' });
+    vec(c, ox - ux * s, oy - uy * s, ox - ux * (s + run.fr * kf), oy - uy * (s + run.fr * kf), '#dc2626', 3, 9);
+    text(c, st.th > 0 ? `f + mg sinθ = ${fmt(run.fr / 1000, 2)} kN` : `f = ${fmt(run.fr / 1000, 2)} kN`, ox - ux * (s + run.fr * kf) - 8, oy - uy * (s + run.fr * kf) - 12, '#dc2626', { bold: true, size: 12, align: 'right' });
+  }
+  // 仪表
+  const gx = W - 90;
+  gauge(c, gx, 70, 38, p.v, run.vmax * 1.2, '速度 v', 'm/s', '#ea580c');
+  gauge(c, gx - 110, 70, 38, p.P / 1000, st.P, '功率 P', 'kW', p.P >= st.P * 1000 * 0.999 ? '#dc2626' : '#2563eb');
+  gauge(c, gx - 220, 70, 38, p.a, Math.max(st.a, (3 * run.fr - run.fr) / st.m), '加速度 a', 'm/s²', '#16a34a');
+  const phase = run.mode === 'acc' ? (p.phase === 1 ? '阶段 1：匀加速（F 不变，P 增大）' : p.v < run.vmax * 0.995 ? '阶段 2：功率恒定，加速度减小' : '阶段 3：匀速（F = f）')
+    : p.v < run.vmax * 0.995 ? '功率恒定：加速度减小的加速运动' : '匀速（F = f，a = 0）';
+  text(c, phase, 14, 22, '#111827', { bold: true, size: 14, align: 'left' });
+  text(c, `t = ${fmt(Math.min(st.t, run.T), 2)} s，x = ${fmt(p.x, 1)} m`, 14, 44, '#6b7280', { size: 13, align: 'left' });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W || !run) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2, t = Math.min(st.t, run.T);
+  chartView.begin();
+  const vs = run.pts.map(q => [q.t, q.v]), p = sample(run, t);
+  const series = [{ pts: vs, color: '#ea580c', label: run.mode === 'acc' ? '恒定加速度' : '恒定功率' }];
+  if (st.compare && other) series.push({ pts: other.pts.map(q => [q.t, q.v]), color: '#7c3aed', dash: [6, 4], label: other.mode === 'acc' ? '恒定加速度' : '恒定功率' });
+  const vl = run.mode === 'acc' ? [{ x: run.t1, color: '#2563eb', label: `t₁ = ${fmt(run.t1, 2)} s` }] : [];
+  Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: run.T, ymin: 0, ymax: run.vmax * 1.2, xlabel: 't / s', ylabel: 'v / (m/s)', legendX: 80, series,
+    hlines: [{ y: run.vmax, color: '#dc2626', label: `v_max = P/f = ${fmt(run.vmax, 2)}` }].concat(run.mode === 'acc' ? [{ y: run.v1, color: '#2563eb', label: `v₁ = ${fmt(run.v1, 2)}` }] : []),
+    vlines: vl, points: [{ x: t, y: p.v, color: '#ea580c' }],
+  });
+  const Fm = Math.max(...run.pts.map(q => q.F)) / 1000;
+  const Fs = run.pts.map(q => [q.t, q.F / 1000]), Ps = run.pts.map(q => [q.t, q.P / 1000 / st.P * Fm]);
+  Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: run.T, ymin: 0, ymax: Fm * 1.2, xlabel: 't / s', ylabel: '牵引力 F / kN', legendX: 90,
+    series: [{ pts: Fs, color: '#2563eb', label: 'F' }, { pts: Ps, color: '#dc2626', dash: [5, 4], label: `功率 P（满格 = ${st.P} kW）` }],
+    hlines: [{ y: run.fr / 1000, color: '#57534e', label: 'f' }],
+    vlines: vl.map(v => ({ ...v, label: '' })), points: [{ x: t, y: p.F / 1000, color: '#2563eb' }],
+  });
+}
+
+// ---------- 面板 ----------
+function updatePanel() {
+  $('aRow').style.display = st.mode === 'acc' ? '' : 'none';
+  const t = Math.min(st.t, run.T), p = sample(run, t), m = st.m;
+  $('ttv').textContent = `${fmt(t, 1)} s`;
+  $('tbl').innerHTML = `
+    <tr><td>速度 v</td><td>${fmt(p.v, 2)} m/s</td></tr>
+    <tr><td>牵引力 F</td><td>${fmt(p.F, 0)} N</td></tr>
+    <tr><td>功率 P = Fv</td><td>${fmt(p.P / 1000, 2)} kW</td></tr>
+    <tr><td>加速度 a = (F − f)/m</td><td>${fmt(p.a, 3)} m/s²</td></tr>
+    <tr><td>牵引力做功 W_F</td><td>${fmt(p.W / 1000, 1)} kJ</td></tr>
+    <tr><td>克服阻力做功 W_f</td><td>${fmt(p.Wf / 1000, 1)} kJ</td></tr>
+    <tr><td>动能 ½mv²（= W_F − W_f）</td><td>${fmt(0.5 * m * p.v * p.v / 1000, 1)} kJ</td></tr>`;
+  const P = st.P * 1000, fr = run.fr;
+  let html = `<div class="node"><span class="f">最大速度：a = 0 → F = f → v_max = P额/f</span><br><span class="v">${fmt(P, 0)} ÷ ${fmt(fr, 0)} = ${fmt(run.vmax, 2)} m/s</span>${st.th > 0 ? `<br><span class="n">上坡：f总 = f + mg sinθ = ${fmt(st.f, 0)} + ${fmt(m * g * Math.sin(st.th * DEG), 0)} N</span>` : ''}</div>`;
+  if (st.mode === 'acc') {
+    html += `<div class="link">↓ 匀加速阶段：F − f = ma</div>
+      <div class="node"><span class="f">F = f + ma</span> = ${fmt(fr, 0)} + ${m} × ${st.a} = <span class="v">${fmt(run.Fa, 0)} N</span></div>
+      <div class="link">↓ 功率达到额定值时匀加速结束</div>
+      <div class="node"><span class="f">v₁ = P额/F = ${fmt(run.v1, 2)} m/s，t₁ = v₁/a = ${fmt(run.t1, 2)} s</span><br><span class="n">x₁ = v₁²/(2a) = ${fmt(run.v1 ** 2 / (2 * st.a), 2)} m，这段牵引力做功 W₁ = F·x₁ = ${fmt(run.Fa * run.v1 ** 2 / (2 * st.a) / 1000, 1)} kJ</span></div>
+      <div class="link">↓ 之后功率恒定</div>`;
+  } else html += '<div class="link">↓ 功率恒定</div>';
+  const vq = run.vmax / 2, aq = (P / vq - fr) / m;
+  html += `<div class="node"><span class="f">a = (P/v − f)/m，随 v 增大而减小</span><br>例：v = v_max/2 = ${fmt(vq, 2)} m/s 时 F = ${fmt(P / vq, 0)} N，a = <span class="v">${fmt(aq, 2)} m/s²</span>${st.mode === 'acc' && vq < run.v1 ? '<br><span class="n">（此速度还在匀加速阶段，a 实际等于设定值）</span>' : ''}</div>
+    <div class="link">↓ 变加速阶段不能用运动学公式，用动能定理</div>
+    <div class="node"><span class="f">P·t − f·x = ½mv₂² − ½mv₁²</span><br><span class="n">牵引力的功用 W = Pt，因为 F 是变力。</span></div>`;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function rebuild() {
+  run = simulate(st.mode);
+  other = st.compare ? simulate(st.mode === 'acc' ? 'power' : 'acc') : null;
+  st.t = Math.min(st.t, run.T);
+  render();
+}
+const anim = Lab.loop(dt => {
+  st.t = Math.min(run.T, st.t + dt * st.fast * Math.max(1, run.T / 30));
+  $('tt').value = Math.round(st.t / run.T * 1000);
+  render();
+  if (st.t >= run.T) { $('play').textContent = '▶ 重新启动'; return false; }
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.t >= run.T - 1e-9) st.t = 0;
+  $('play').textContent = '⏸ 暂停'; anim.start();
+});
+$('fast').addEventListener('click', () => { st.fast = st.fast === 1 ? 3 : 1; $('fast').classList.toggle('on', st.fast !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.t = +$('tt').value / 1000 * run.T; render(); });
+Lab.radios('mode', m => { st.mode = m; st.t = 0; rebuild(); });
+Lab.range('m', v => `${v} kg`, v => { st.m = v; rebuild(); });
+Lab.range('P', v => `${v} kW`, v => { st.P = v; rebuild(); });
+Lab.range('f', v => `${v} N`, v => { st.f = v; rebuild(); });
+Lab.range('a', v => `${fmt(v, 1)} m/s²`, v => { st.a = v; rebuild(); });
+Lab.range('th', v => `${fmt(v, 1)}°`, v => { st.th = v; rebuild(); });
+const PRESETS = {
+  p: { mode: 'power', m: 2000, P: 80, f: 4000, th: 0, compare: false },
+  a: { mode: 'acc', m: 2000, P: 80, f: 4000, a: 2, th: 0, compare: false },
+  slope: { mode: 'power', m: 2000, P: 80, f: 2000, th: 5.5, compare: false },
+  compare: { mode: 'acc', m: 2000, P: 80, f: 4000, a: 1, th: 0, compare: true },
+};
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+  Object.assign(st, PRESETS[b.dataset.preset]);
+  ['m', 'P', 'f', 'a', 'th'].forEach(k => Lab.setRange(k, st[k]));
+  Lab.setRadio('mode', st.mode);
+  st.t = 0; rebuild();
+  $('play').textContent = '⏸ 暂停'; anim.start();
+}));
+rebuild();
+</script>
+</body>
+</html>

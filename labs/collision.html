@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>碰撞与动量守恒 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>碰撞与动量守恒</b><span class="crumb">选择性必修第一册 · 第一章 动量守恒定律</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">镜头跟随系统质心：系统动量守恒时，质心做匀速直线运动</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">水平面光滑时，两物体组成的系统<b>动量守恒</b>：m₁v₁ + m₂v₂ = m₁v₁′ + m₂v₂′。动能是否守恒，要看碰撞类型。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="ball" checked>两物体碰撞</label>
+      <label class="chk"><input type="radio" name="mode" value="spring">弹簧连接</label>
+      <label class="chk"><input type="radio" name="mode" value="bullet">子弹打木块</label>
+    </div>
+
+    <h2>条件（向右为正）</h2>
+    <div class="grid">
+      <div class="row">m₁ <input type="range" id="m1" min="0.5" max="6" step="0.5" value="1"><span class="val" id="m1v"></span></div>
+      <div class="row">m₂ <input type="range" id="m2" min="0.5" max="6" step="0.5" value="1"><span class="val" id="m2v"></span></div>
+    </div>
+    <div class="row">v₁ <input type="range" id="v1" min="0" max="10" step="0.5" value="4"><span class="val" id="v1v"></span></div>
+    <div class="row" id="v2Row">v₂ <input type="range" id="v2" min="-6" max="6" step="0.5" value="0"><span class="val" id="v2v"></span></div>
+    <div class="row" id="eRow">恢复系数 e <input type="range" id="e" min="0" max="1" step="0.05" value="1"><span class="val" id="ev"></span></div>
+    <div class="row" id="kRow">弹簧劲度 k <input type="range" id="k" min="20" max="400" step="10" value="100"><span class="val" id="kv"></span></div>
+    <div class="row" id="fRow">子弹所受阻力 f <input type="range" id="f" min="2" max="60" step="1" value="10"><span class="val" id="fv"></span></div>
+    <div class="row" id="LRow">木块长度 L <input type="range" id="L" min="0.5" max="4" step="0.1" value="2.5"><span class="val" id="Lv"></span></div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="slow">慢放 0.25×</button></div>
+    <div class="row">时刻 t <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2>碰撞前后</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const DT = 1e-4, T_END = 3;
+const st = { mode: 'ball', m1: 1, m2: 1, v1: 4, v2: 0, e: 1, k: 100, f: 10, L: 2.5, t: 0, speed: 1 };
+let run = null;
+
+const size = m => 0.25 + 0.12 * Math.sqrt(m);   // 物体半宽（m）
+function simulate() {
+  const { m1, m2, mode } = st;
+  const r1 = mode === 'bullet' ? 0.12 : size(m1), r2 = mode === 'bullet' ? st.L / 2 : size(m2);
+  const SL = 0.8;   // 弹簧原长
+  let x1 = -2, x2 = 0, v1 = st.v1, v2 = mode === 'ball' ? st.v2 : 0, t = 0, Q = 0, Ep = 0, hit = false, inside = false;
+  if (mode === 'bullet') x1 = -r2 - 1.2;
+  const pts = [];
+  let maxComp = { c: 0, t: 0, v: 0 };
+  while (t <= T_END) {
+    let F = 0;   // 作用在物体 1 上的力（向右为正）
+    if (mode === 'spring') {
+      const c = (x1 + r1) - (x2 - r2 - SL);
+      if (c > 0) { F = -st.k * c; Ep = 0.5 * st.k * c * c; if (c > maxComp.c) maxComp = { c, t, v: v1 }; }
+      else Ep = 0;
+    } else if (mode === 'bullet') {
+      const s = x1 - (x2 - r2);   // 子弹进入木块的深度
+      inside = s >= 0 && s <= 2 * r2;
+      if (inside && v1 - v2 > 1e-9) F = -st.f;
+    }
+    if (pts.length === 0 || t - pts[pts.length - 1].t >= 0.004 - 1e-9) pts.push({ t, x1, x2, v1, v2, Q, Ep, inside });
+    const a1 = F / m1, a2 = -F / m2;
+    const n1 = v1 + a1 * DT, n2 = v2 + a2 * DT;
+    if (F !== 0 && mode === 'bullet') Q += st.f * Math.abs(v1 - v2) * DT;
+    x1 += (v1 + n1) / 2 * DT; x2 += (v2 + n2) / 2 * DT;
+    v1 = n1; v2 = n2;
+    if (mode === 'bullet' && F !== 0 && v1 <= v2) v1 = v2 = (m1 * v1 + m2 * v2) / (m1 + m2);
+    if (mode === 'ball' && !hit && x2 - x1 <= r1 + r2 && v1 > v2) {
+      const u = v1 - v2, P = m1 * v1 + m2 * v2;
+      const nv1 = (P - m2 * st.e * u) / (m1 + m2), nv2 = (P + m1 * st.e * u) / (m1 + m2);
+      Q = 0.5 * m1 * v1 * v1 + 0.5 * m2 * v2 * v2 - 0.5 * m1 * nv1 * nv1 - 0.5 * m2 * nv2 * nv2;
+      v1 = nv1; v2 = nv2; hit = true;
+    }
+    t += DT;
+  }
+  return { pts, r1, r2, SL, maxComp };
+}
+function sample(t) { return run.pts[Math.min(run.pts.length - 1, Math.max(0, Math.round(t / 0.004)))]; }
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+function draw() {
+  if (!view.W || !run) return;
+  const c = ctx, W = view.W, H = view.H, p = sample(st.t);
+  view.begin();
+  const M = st.m1 + st.m2, xc = (st.m1 * p.x1 + st.m2 * p.x2) / M;
+  const k = Math.min(70, W / 11);
+  const X = x => W / 2 + (x - xc) * k;
+  const gy = H * 0.5;
+  // 地面刻度（随镜头移动）
+  c.fillStyle = '#f1f5f9'; c.fillRect(0, gy, W, H * 0.12);
+  line(c, 0, gy, W, gy, '#78716c', 2);
+  for (let x = Math.floor(xc - W / 2 / k); X(x) < W; x += 1) {
+    line(c, X(x), gy, X(x), gy + 8, '#a8a29e', 1);
+    text(c, `${x}`, X(x), gy + 18, '#a8a29e', { size: 10, halo: false });
+  }
+  // 质心
+  line(c, W / 2, gy - 150, W / 2, gy + 30, 'rgba(124,58,237,.35)', 1, [4, 4]);
+  text(c, '质心', W / 2, gy - 158, '#7c3aed', { size: 12, bold: true });
+  const hh = x => Math.max(26, Math.min(80, x * k * 1.4));
+  if (st.mode === 'bullet') {
+    const bw = run.r2 * 2 * k, bh = 70;
+    c.fillStyle = '#d6b48a'; c.strokeStyle = '#92400e'; c.lineWidth = 2;
+    c.fillRect(X(p.x2 - run.r2), gy - bh, bw, bh); c.strokeRect(X(p.x2 - run.r2), gy - bh, bw, bh);
+    text(c, `木块 M = ${st.m2} kg`, X(p.x2), gy - bh - 14, '#92400e', { bold: true, size: 12 });
+    // 子弹与弹孔
+    const s = p.x1 - (p.x2 - run.r2);
+    if (s > 0) line(c, X(p.x2 - run.r2), gy - bh / 2, X(Math.min(p.x1, p.x2 + run.r2)), gy - bh / 2, '#57534e', 4);
+    c.fillStyle = '#374151';
+    c.beginPath(); c.moveTo(X(p.x1) + 10, gy - bh / 2); c.lineTo(X(p.x1) - 8, gy - bh / 2 - 6); c.lineTo(X(p.x1) - 8, gy - bh / 2 + 6); c.closePath(); c.fill();
+    text(c, `子弹 m = ${st.m1} kg`, X(p.x1), gy - bh / 2 - 22, '#374151', { bold: true, size: 12 });
+    if (s > 0) text(c, `进入深度 ${fmt(Math.min(s, run.r2 * 2), 2)} m`, X(p.x2), gy + 44, '#b45309', { bold: true, size: 12 });
+  } else {
+    const h1 = hh(run.r1 * 2), h2 = hh(run.r2 * 2);
+    c.fillStyle = '#fdba74'; c.strokeStyle = '#ea580c'; c.lineWidth = 2;
+    c.fillRect(X(p.x1 - run.r1), gy - h1, run.r1 * 2 * k, h1); c.strokeRect(X(p.x1 - run.r1), gy - h1, run.r1 * 2 * k, h1);
+    c.fillStyle = '#93c5fd'; c.strokeStyle = '#2563eb';
+    c.fillRect(X(p.x2 - run.r2), gy - h2, run.r2 * 2 * k, h2); c.strokeRect(X(p.x2 - run.r2), gy - h2, run.r2 * 2 * k, h2);
+    text(c, `m₁ = ${st.m1}`, X(p.x1), gy - h1 / 2, '#7c2d12', { bold: true, size: 12 });
+    text(c, `m₂ = ${st.m2}`, X(p.x2), gy - h2 / 2, '#1e3a8a', { bold: true, size: 12 });
+    if (st.mode === 'spring') {
+      const xa = X(p.x2 - run.r2), xb0 = X(p.x2 - run.r2 - run.SL), comp = Math.max(0, (p.x1 + run.r1) - (p.x2 - run.r2 - run.SL));
+      const xs = xb0 + comp * k, y = gy - Math.min(h2, h1) / 2;
+      c.beginPath(); c.moveTo(xa, y);
+      const n = 10;
+      for (let i = 1; i < n; i++) c.lineTo(xa + (xs - xa) * i / n, y + (i % 2 ? -8 : 8));
+      c.lineTo(xs, y);
+      c.strokeStyle = comp > 0 ? '#dc2626' : '#6b7280'; c.lineWidth = 2; c.stroke();
+      if (comp > 0) text(c, `压缩 ${fmt(comp, 3)} m`, (xa + xs) / 2, y - 22, '#dc2626', { bold: true, size: 12 });
+    }
+  }
+  // 速度箭头
+  const kv = 18;
+  const y1 = st.mode === 'bullet' ? gy - 110 : gy - hh(run.r1 * 2) - 28, y2 = st.mode === 'bullet' ? gy - 130 : gy - hh(run.r2 * 2) - 28;
+  if (Math.abs(p.v1) > 0.02) vec(c, X(p.x1), y1, X(p.x1) + p.v1 * kv, y1, '#ea580c', 2.6, 9);
+  text(c, `v₁ = ${fmt(p.v1, 2)}`, X(p.x1), y1 - 16, '#ea580c', { bold: true, size: 12 });
+  if (Math.abs(p.v2) > 0.02) vec(c, X(p.x2), y2, X(p.x2) + p.v2 * kv, y2, '#2563eb', 2.6, 9);
+  text(c, `v₂ = ${fmt(p.v2, 2)}`, X(p.x2), y2 - 16, '#2563eb', { bold: true, size: 12 });
+
+  // 动量与动能柱
+  const bx = 20, by = H - 60, bw = 26, P0 = Math.abs(st.m1 * st.v1 + st.m2 * (st.mode === 'ball' ? st.v2 : 0)) || 1;
+  const E0 = 0.5 * st.m1 * st.v1 ** 2 + 0.5 * st.m2 * (st.mode === 'ball' ? st.v2 ** 2 : 0) || 1;
+  const bh = Math.min(H * 0.22, by - H * 0.62 - 30);
+  const bars = [
+    ['p₁', st.m1 * p.v1 / P0, '#ea580c'], ['p₂', st.m2 * p.v2 / P0, '#2563eb'], ['p总', (st.m1 * p.v1 + st.m2 * p.v2) / P0, '#111827'],
+    null,
+    ['Ek₁', 0.5 * st.m1 * p.v1 ** 2 / E0, '#ea580c'], ['Ek₂', 0.5 * st.m2 * p.v2 ** 2 / E0, '#2563eb'],
+    [st.mode === 'spring' ? 'Ep弹' : '内能', (st.mode === 'spring' ? p.Ep : p.Q) / E0, '#dc2626'],
+  ];
+  let x = bx;
+  const yz = by - bh * 0.5;
+  text(c, '动量（相对初始总动量）', bx, by - bh - 8, '#374151', { size: 11, bold: true, align: 'left' });
+  text(c, '能量（相对初始动能）', bx + 4 * (bw + 8) + 12, by - bh - 8, '#374151', { size: 11, bold: true, align: 'left' });
+  bars.forEach(b => {
+    if (!b) { x += 20; return; }
+    const [n, v, col] = b, isE = n.startsWith('E') || n === '内能';
+    const base = isE ? by : yz, scale = isE ? bh : bh * 0.5;
+    c.fillStyle = '#f3f4f6'; c.fillRect(x, by - bh, bw, bh);
+    c.fillStyle = col; c.fillRect(x, Math.min(base, base - v * scale), bw, Math.abs(v * scale));
+    text(c, n, x + bw / 2, by + 10, col, { size: 11, bold: true });
+    x += bw + 8;
+  });
+  line(c, bx - 2, yz, bx + 3 * (bw + 8), yz, '#9ca3af', 1);
+  text(c, `t = ${fmt(st.t, 3)} s`, W - 14, 20, '#111827', { bold: true, size: 15, align: 'right' });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W || !run) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2, t = st.t, p = sample(t);
+  chartView.begin();
+  const P = run.pts, s1 = P.map(q => [q.t, q.v1]), s2 = P.map(q => [q.t, q.v2]);
+  const vals = P.flatMap(q => [q.v1, q.v2]);
+  const vc = (st.m1 * st.v1 + st.m2 * (st.mode === 'ball' ? st.v2 : 0)) / (st.m1 + st.m2);
+  const pl = Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: T_END, ymin: Math.min(0, ...vals) * 1.15 - 0.3, ymax: Math.max(...vals) * 1.15 + 0.3, xlabel: 't / s', ylabel: 'v / (m/s)', legendX: 80,
+    series: [{ pts: s1, color: '#ea580c', label: st.mode === 'bullet' ? '子弹' : '物体 1' }, { pts: s2, color: '#2563eb', label: st.mode === 'bullet' ? '木块' : '物体 2' }],
+    hlines: [{ y: vc, color: '#7c3aed', label: `质心速度 ${fmt(vc, 2)}` }],
+    points: [{ x: t, y: p.v1, color: '#ea580c' }, { x: t, y: p.v2, color: '#2563eb' }],
+  });
+  line(c, pl.X(t), pl.y0, pl.X(t), pl.y1, 'rgba(17,24,39,.25)', 1);
+  const E = P.map(q => [q.t, 0.5 * st.m1 * q.v1 ** 2 + 0.5 * st.m2 * q.v2 ** 2]);
+  const X2 = P.map(q => [q.t, st.mode === 'spring' ? q.Ep : q.Q]);
+  const E0 = E[0][1];
+  Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+    xmin: 0, xmax: T_END, ymin: 0, ymax: E0 * 1.15, xlabel: 't / s', ylabel: '能量 / J', legendX: 70,
+    series: [{ pts: E, color: '#ea580c', label: '总动能' }, { pts: X2, color: '#dc2626', dash: [5, 4], label: st.mode === 'spring' ? '弹性势能' : '损失的动能（内能）' }],
+    hlines: [{ y: E0, color: '#9ca3af' }],
+    points: [{ x: t, y: E[Math.min(E.length - 1, Math.round(t / 0.004))][1], color: '#ea580c' }],
+  });
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  ball: [
+    '弹性碰撞（e = 1）：动量、动能都守恒。动碰静时 v₁′ = (m₁ − m₂)v₁/(m₁ + m₂)，v₂′ = 2m₁v₁/(m₁ + m₂)。',
+    '质量相等的弹性碰撞交换速度；大碰小，一起向前；小碰大，小的反弹。',
+    '完全非弹性碰撞（e = 0）：碰后共速，动能损失最大：ΔEk = m₁m₂(v₁ − v₂)²/[2(m₁ + m₂)]。',
+    '碰撞是否可能，三条检验：动量守恒、动能不增加、速度合理（碰后前面的物体不能比后面的慢）。',
+  ],
+  spring: [
+    '弹簧压缩最短（或伸长最长）时两物体共速，弹性势能最大。',
+    'Ep_max = 系统动能减少量 = ½·m₁m₂/(m₁ + m₂)·v₁²（m₂ 原来静止）。',
+    '弹簧恢复原长时两物体分离，相当于一次弹性碰撞，末速度满足弹性碰撞公式。',
+    '整个过程中系统动量始终守恒，机械能（动能 + 弹性势能）守恒。',
+  ],
+  bullet: [
+    '子弹留在木块中：等同于完全非弹性碰撞，末速度 v = mv₀/(m + M)。',
+    '摩擦生热 Q = f·d（d 为子弹进入的深度，即相对位移），等于系统动能的减少量。',
+    'v–t 图中两条线之间的面积就是进入深度 d。',
+    '若计算得到的 d 大于木块长度，子弹会穿出，此时 Q = f·L。',
+  ],
+};
+function updatePanel() {
+  const md = st.mode;
+  $('v2Row').style.display = md === 'ball' ? '' : 'none';
+  $('eRow').style.display = md === 'ball' ? '' : 'none';
+  $('kRow').style.display = md === 'spring' ? '' : 'none';
+  $('fRow').style.display = md === 'bullet' ? '' : 'none';
+  $('LRow').style.display = md === 'bullet' ? '' : 'none';
+  $('concl').innerHTML = CONCL[md].map(s => `<li>${s}</li>`).join('');
+  $('ttv').textContent = `${fmt(st.t, 3)} s`;
+  const { m1, m2 } = st, v10 = st.v1, v20 = md === 'ball' ? st.v2 : 0;
+  const last = run.pts[run.pts.length - 1];
+  const P0 = m1 * v10 + m2 * v20, E0 = 0.5 * m1 * v10 ** 2 + 0.5 * m2 * v20 ** 2;
+  const P1 = m1 * last.v1 + m2 * last.v2, E1 = 0.5 * m1 * last.v1 ** 2 + 0.5 * m2 * last.v2 ** 2;
+  $('tbl').innerHTML = `
+    <tr><td></td><td style="text-align:right">碰前</td><td>碰后（最终）</td></tr>
+    <tr><td>v₁</td><td style="text-align:right">${fmt(v10, 2)}</td><td>${fmt(last.v1, 2)} m/s</td></tr>
+    <tr><td>v₂</td><td style="text-align:right">${fmt(v20, 2)}</td><td>${fmt(last.v2, 2)} m/s</td></tr>
+    <tr><td>总动量</td><td style="text-align:right">${fmt(P0, 2)}</td><td>${fmt(P1, 2)} kg·m/s</td></tr>
+    <tr><td>总动能</td><td style="text-align:right">${fmt(E0, 2)}</td><td>${fmt(E1, 2)} J</td></tr>`;
+  const mu = m1 * m2 / (m1 + m2), vc = P0 / (m1 + m2);
+  let html = `<div class="node"><span class="f">动量守恒：m₁v₁ + m₂v₂ = (m₁ + m₂)v质心</span><br><span class="v">${fmt(P0, 2)} = ${fmt(m1 + m2, 1)} × ${fmt(vc, 3)}</span></div><div class="link">↓</div>`;
+  if (md === 'ball') {
+    const u = v10 - v20;
+    if (u <= 0) html += '<div class="node"><span class="bad">v₁ ≤ v₂：追不上，不会碰撞</span></div>';
+    else {
+      const a1 = (P0 - m2 * st.e * u) / (m1 + m2), a2 = (P0 + m1 * st.e * u) / (m1 + m2);
+      html += `<div class="node"><span class="f">${st.e === 1 ? '弹性碰撞：动量守恒 + 动能守恒' : st.e === 0 ? '完全非弹性碰撞：碰后共速' : `非弹性碰撞：分离速度 = e × 接近速度`}</span><br>
+        ${st.e === 1 ? `v₁′ = [(m₁ − m₂)v₁ + 2m₂v₂]/(m₁ + m₂) = <span class="v">${fmt(a1, 3)}</span><br>v₂′ = [(m₂ − m₁)v₂ + 2m₁v₁]/(m₁ + m₂) = <span class="v">${fmt(a2, 3)}</span>`
+          : st.e === 0 ? `v共 = (m₁v₁ + m₂v₂)/(m₁ + m₂) = <span class="v">${fmt(vc, 3)}</span>` : `v₂′ − v₁′ = ${st.e} × (${fmt(v10, 1)} − ${fmt(v20, 1)}) → v₁′ = <span class="v">${fmt(a1, 3)}</span>，v₂′ = <span class="v">${fmt(a2, 3)}</span>`}</div>
+        <div class="link">↓ 动能损失</div>
+        <div class="node"><span class="f">ΔEk = ½·m₁m₂/(m₁ + m₂)·(1 − e²)(v₁ − v₂)²</span><br><span class="v">= ${fmt(0.5 * mu * (1 - st.e ** 2) * u * u, 3)} J</span>${st.e === 0 ? '（最大）' : ''}<br>
+        <span class="n">${st.e === 1 && v20 === 0 ? (m1 === m2 ? '质量相等：交换速度' : m1 > m2 ? '大碰小：两者都向前' : '小碰大：m₁ 反弹') : ''}</span></div>`;
+    }
+  } else if (md === 'spring') {
+    const Ep = 0.5 * mu * v10 ** 2, xm = Math.sqrt(2 * Ep / st.k);
+    html += `<div class="node"><span class="f">压缩最短时共速</span>：v共 = m₁v₁/(m₁ + m₂) = <span class="v">${fmt(vc, 3)} m/s</span></div>
+      <div class="link">↓ 机械能守恒</div>
+      <div class="node"><span class="f">Ep_max = ½m₁v₁² − ½(m₁ + m₂)v共²</span> = <span class="v">${fmt(Ep, 3)} J</span><br>最大压缩量 x = √(2Ep/k) = <span class="v">${fmt(xm, 3)} m</span>（模拟值 ${fmt(run.maxComp.c, 3)} m）</div>
+      <div class="link">↓ 弹簧恢复原长时分离</div>
+      <div class="node">末速度同弹性碰撞：v₁′ = <span class="v">${fmt((m1 - m2) * v10 / (m1 + m2), 3)}</span>，v₂′ = <span class="v">${fmt(2 * m1 * v10 / (m1 + m2), 3)}</span> m/s</div>`;
+  } else {
+    const Qc = 0.5 * mu * v10 ** 2, d = Qc / st.f;
+    html += `<div class="node"><span class="f">假设子弹留在木块中：共速 v = mv₀/(m + M)</span> = <span class="v">${fmt(vc, 3)} m/s</span></div>
+      <div class="link">↓ 能量守恒：f·d = ΔEk</div>
+      <div class="node"><span class="f">d = ½·mM/(m + M)·v₀² / f</span> = ${fmt(Qc, 3)} ÷ ${st.f} = <span class="v">${fmt(d, 3)} m</span></div>
+      <div class="link">↓ 与木块长度比较</div>
+      <div class="node">${d <= st.L ? `<span class="good">d ≤ L = ${st.L} m：子弹留在木块中</span>，生热 Q = ${fmt(Qc, 3)} J` : `<span class="bad">d > L = ${st.L} m：子弹穿出木块</span><br>Q = f·L = ${fmt(st.f * st.L, 3)} J；穿出后子弹 ${fmt(last.v1, 2)} m/s，木块 ${fmt(last.v2, 2)} m/s`}</div>`;
+  }
+  $('chain').innerHTML = html;
+}
+
+// ---------- 预设 ----------
+const PRESETS = {
+  ball: [
+    ['弹性：等质量交换速度', { m1: 1, m2: 1, v1: 4, v2: 0, e: 1 }],
+    ['弹性：大碰小', { m1: 4, m2: 1, v1: 4, v2: 0, e: 1 }],
+    ['弹性：小碰大反弹', { m1: 1, m2: 4, v1: 4, v2: 0, e: 1 }],
+    ['完全非弹性：共速', { m1: 2, m2: 1, v1: 4, v2: 0, e: 0 }],
+    ['相向运动碰撞', { m1: 2, m2: 1, v1: 3, v2: -3, e: 1 }],
+  ],
+  spring: [
+    ['等质量：交换速度', { m1: 1, m2: 1, v1: 4, k: 100 }],
+    ['压缩最短时共速', { m1: 2, m2: 1, v1: 4, k: 100 }],
+  ],
+  bullet: [
+    ['子弹留在木块中', { m1: 1, m2: 4, v1: 10, f: 12, L: 4 }],
+    ['子弹穿出木块', { m1: 1, m2: 4, v1: 10, f: 10, L: 2.5 }],
+  ],
+};
+function applyPreset(o) {
+  for (const [k, v] of Object.entries(o)) { st[k] = v; Lab.setRange(k, v); }
+  reset(true);
+}
+function showPresets() {
+  $('presets').innerHTML = '';
+  PRESETS[st.mode].forEach(([name, o]) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.addEventListener('click', () => applyPreset(o));
+    $('presets').appendChild(b);
+  });
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function reset(autoplay) {
+  run = simulate();
+  st.t = 0; $('tt').value = 0; anim.stop();
+  if (autoplay) { anim.start(); $('play').textContent = '⏸ 暂停'; } else $('play').textContent = '▶ 开始';
+  render();
+}
+const anim = Lab.loop(dt => {
+  st.t = Math.min(T_END, st.t + dt * st.speed);
+  $('tt').value = Math.round(st.t / T_END * 1000);
+  render();
+  if (st.t >= T_END) { $('play').textContent = '▶ 重新播放'; return false; }
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.t >= T_END - 1e-9) st.t = 0;
+  $('play').textContent = '⏸ 暂停'; anim.start();
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.25 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.t = +$('tt').value / 1000 * T_END; render(); });
+const upd = k => v => { st[k] = v; reset(false); };
+Lab.range('m1', v => `${fmt(v, 1)} kg`, upd('m1'));
+Lab.range('m2', v => `${fmt(v, 1)} kg`, upd('m2'));
+Lab.range('v1', v => `${fmt(v, 1)} m/s`, upd('v1'));
+Lab.range('v2', v => `${fmt(v, 1)} m/s`, upd('v2'));
+Lab.range('e', v => fmt(v, 2), upd('e'));
+Lab.range('k', v => `${v} N/m`, upd('k'));
+Lab.range('f', v => `${v} N`, upd('f'));
+Lab.range('L', v => `${fmt(v, 1)} m`, upd('L'));
+Lab.radios('mode', m => { st.mode = m; showPresets(); applyPreset(PRESETS[m][0][1]); });
+showPresets();
+reset(false);
+</script>
+</body>
+</html>

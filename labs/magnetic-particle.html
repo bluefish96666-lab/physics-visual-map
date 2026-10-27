@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>带电粒子在匀强磁场中的运动 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>带电粒子在匀强磁场中的运动</b><span class="crumb">选择性必修第二册 · 第一章 安培力与洛伦兹力</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">拖动 S 点移动粒子源 · 拖动绿色箭头尖端改变速度方向</div></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">拖动 <b>S</b> 移动粒子源，拖动<b style="color:#16a34a">绿色箭头</b>尖端改变入射方向，点「发射」看粒子运动。解题三步：<b>找圆心 → 求半径 → 定圆心角</b>。</div>
+
+    <h2>经典模型</h2>
+    <div class="grid">
+      <button data-preset="full">完整圆周</button>
+      <button data-preset="half">单边界 · 斜射入</button>
+      <button data-preset="strip">双边界 · 临界速度</button>
+      <button data-preset="circle">圆形区域 · 径向射入</button>
+      <button data-preset="rotate">旋转圆（定速变向）</button>
+      <button data-preset="scale">放缩圆（定向变速）</button>
+      <button data-preset="focus" style="grid-column:span 2">磁聚焦（r = R 的平行粒子束）</button>
+    </div>
+
+    <h2>磁场</h2>
+    <div class="row">区域
+      <select id="region">
+        <option value="full">充满整个空间</option>
+        <option value="half">单直线边界（右侧有磁场）</option>
+        <option value="strip">双边界（宽 d 的条形区域）</option>
+        <option value="circle">圆形区域（半径 R）</option>
+      </select>
+    </div>
+    <div class="row" id="dRow">宽度 d <input type="range" id="d" min="1" max="10" step="0.5" value="4"><span class="val" id="dv"></span></div>
+    <div class="row" id="RRow">半径 R <input type="range" id="R" min="1" max="7" step="0.5" value="4"><span class="val" id="Rv"></span></div>
+    <div class="row">磁感应强度 B <input type="range" id="B" min="0.02" max="0.5" step="0.01" value="0.1"><span class="val" id="Bv"></span></div>
+    <div class="row">方向
+      <label class="chk"><input type="radio" name="bdir" value="-1" checked> × 垂直纸面向里</label>
+      <label class="chk"><input type="radio" name="bdir" value="1"> · 垂直纸面向外</label>
+    </div>
+
+    <h2>粒子</h2>
+    <div class="row"><button data-particle="1,1">质子</button><button data-particle="1,2">氘核</button><button data-particle="2,4">α 粒子</button><button data-particle="-1,1">反质子</button></div>
+    <div class="row">电荷量 q <input type="range" id="q" min="-3" max="3" step="1" value="1"><span class="val" id="qv"></span></div>
+    <div class="row">质量 m <input type="range" id="m" min="1" max="8" step="1" value="1"><span class="val" id="mv"></span></div>
+    <div class="row">速度 v <input type="range" id="v" min="0.5" max="15" step="0.01" value="4"><span class="val" id="vv"></span></div>
+    <div class="row">方向角 <input type="range" id="ang" min="-180" max="180" step="1" value="0"><span class="val" id="angv"></span></div>
+
+    <h2>显示</h2>
+    <label class="chk"><input type="checkbox" id="geo" checked> 找圆心作图（半径、圆心角、偏转角）</label><br>
+    <label class="chk"><input type="checkbox" id="vecs" checked> 速度 v 和洛伦兹力 F 的箭头</label>
+    <div class="row">轨迹族
+      <label class="chk"><input type="radio" name="fam" value="none" checked> 无</label>
+      <label class="chk"><input type="radio" name="fam" value="rotate"> 旋转圆</label>
+      <label class="chk"><input type="radio" name="fam" value="scale"> 放缩圆</label>
+      <label class="chk"><input type="radio" name="fam" value="parallel"> 平行束</label>
+    </div>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 发射</button><button id="reset">复位</button></div>
+
+    <h2>测量结果</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul>
+        <li>洛伦兹力始终与速度垂直，只改变速度方向，<b>永不做功</b>，粒子速率不变。</li>
+        <li>周期 T = 2πm/(qB) 与速度大小无关；速度越大半径越大，但转一圈的时间不变。</li>
+        <li>偏转角（速度转过的角度）等于轨迹的圆心角；在磁场中的时间 t = θ/360° · T。</li>
+        <li>单直线边界：进、出磁场时速度与边界的夹角相等。</li>
+        <li>圆形区域：沿半径方向射入，必沿半径方向射出；偏转角满足 tan(θ/2) = R/r。</li>
+        <li>旋转圆：速度大小相同、方向不同，圆心都在以 S 为圆心、半径为 r 的圆上。</li>
+        <li>放缩圆：入射方向相同、速度不同，圆心都在入射点速度的垂线上；从同一直线边界射出时速度方向都相同。</li>
+        <li>磁聚焦：轨迹半径等于圆形磁场半径时，平行射入的粒子会聚到同一点（反过来，从一点射入的粒子平行射出）。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, sci, text, line, vec, dot } = Lab;
+const KR = 0.10365;   // r[cm] = KR·m[u]·v[10⁵ m/s] / (|q|[e]·B[T])
+const KT = 0.06513;   // T[μs] = KT·m[u] / (|q|[e]·B[T])
+const COL = { path: '#dc2626', field: '#7c3aed', v: '#16a34a', F: '#ea580c', geo: '#0f766e' };
+
+const st = {
+  region: 'half', d: 4, R: 4, B: 0.1, bdir: -1,
+  q: 1, m: 1, v: 4, ang: 30,
+  S: { x: -5, y: -6.5 },
+  geo: true, vecs: true, fam: 'none',
+  s: 0,
+};
+
+const view = Lab.canvas($('cv'), o => { SC = Math.min(o.W / 28, o.H / 18); render(); });
+const ctx = view.ctx;
+let SC = 30;
+const sx = x => view.W / 2 + x * SC, sy = y => view.H / 2 - y * SC;
+const wx = px => (px - view.W / 2) / SC, wy = py => (view.H / 2 - py) / SC;
+
+const radius = (v = st.v) => (st.q ? KR * st.m * v / (Math.abs(st.q) * st.B) : Infinity);
+const period = () => (st.q ? KT * st.m / (Math.abs(st.q) * st.B) : Infinity);
+// 逆时针为 +1。ω = −qB_z/m，B 向里时 B_z < 0
+const spin = () => -Math.sign(st.q * st.bdir);
+
+function inField(x, y) {
+  switch (st.region) {
+    case 'half': return x > 0;
+    case 'strip': return x > -st.d / 2 && x < st.d / 2;
+    case 'circle': return x * x + y * y < st.R * st.R;
+    default: return true;
+  }
+}
+
+// ---------- 轨迹：场外匀速直线，场内用圆心精确旋转 ----------
+function simulate(S, angDeg, v) {
+  const r = radius(v), sp = st.q ? spin() : 0;
+  const hw = view.W / 2 / SC + 1, hh = view.H / 2 / SC + 1;
+  let x = S.x, y = S.y, a = angDeg * Math.PI / 180, s = 0;
+  const pts = [{ x, y, s }];
+  let inside = sp !== 0 && inField(x, y);
+  let arc = inside ? startArc(x, y, a, r, sp) : null, cur = arc, done = 'view';
+  for (let i = 0; i < 40000; i++) {
+    if (inside) {
+      const dphi = Math.min(0.02, 0.05 / r);
+      const step = d => {
+        const b = cur.b0 + sp * (cur.theta + d);
+        return [cur.c.x + r * Math.cos(b), cur.c.y + r * Math.sin(b)];
+      };
+      let [nx, ny] = step(dphi), d = dphi;
+      if (!inField(nx, ny)) {
+        let lo = 0, hi = dphi;
+        for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; const [px, py] = step(mid); if (inField(px, py)) lo = mid; else hi = mid; }
+        d = hi;
+        [nx, ny] = step(d);
+        inside = false;
+      }
+      cur.theta += d;
+      if (cur.theta >= 2 * Math.PI) {
+        cur.theta = 2 * Math.PI;
+        s += r * d;
+        pts.push({ x: cur.p1.x, y: cur.p1.y, s });
+        cur.closed = true;
+        done = 'closed';
+        break;
+      }
+      x = nx; y = ny; a += sp * d; s += r * d;
+      pts.push({ x, y, s });
+      if (!inside) { cur.p2 = { x, y }; cur.a2 = a; }
+      if (Math.abs(x) > 3 * hw || Math.abs(y) > 3 * hh) break;
+    } else {
+      const ds = 0.04;
+      let nx = x + ds * Math.cos(a), ny = y + ds * Math.sin(a), d = ds;
+      if (sp && inField(nx, ny)) {
+        let lo = 0, hi = ds;
+        for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (inField(x + mid * Math.cos(a), y + mid * Math.sin(a))) hi = mid; else lo = mid; }
+        d = hi;
+        nx = x + d * Math.cos(a); ny = y + d * Math.sin(a);
+        inside = true;
+      }
+      x = nx; y = ny; s += d;
+      pts.push({ x, y, s });
+      if (inside) { cur = startArc(x, y, a, r, sp); arc = arc || cur; }
+      if (Math.abs(x) > hw || Math.abs(y) > hh) break;
+    }
+  }
+  return { pts, len: s, arc, done, r, sp };
+}
+
+function startArc(x, y, a, r, sp) {
+  const n = sp > 0 ? [-Math.sin(a), Math.cos(a)] : [Math.sin(a), -Math.cos(a)];
+  const c = { x: x + r * n[0], y: y + r * n[1] };
+  return { p1: { x, y }, a1: a, c, sp, b0: Math.atan2(y - c.y, x - c.x), theta: 0, p2: null, a2: null, closed: false };
+}
+
+function sampleAt(path, s) {
+  const p = path.pts;
+  if (s >= path.len) { const e = p[p.length - 1]; return { ...e, a: dirAt(path, p.length - 1) }; }
+  let lo = 0, hi = p.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (p[m].s < s) lo = m; else hi = m; }
+  const f = p[hi].s > p[lo].s ? (s - p[lo].s) / (p[hi].s - p[lo].s) : 0;
+  return { x: p[lo].x + (p[hi].x - p[lo].x) * f, y: p[lo].y + (p[hi].y - p[lo].y) * f, a: dirAt(path, hi) };
+}
+function dirAt(path, i) {
+  const p = path.pts, j = Math.max(1, i);
+  return Math.atan2(p[j].y - p[j - 1].y, p[j].x - p[j - 1].x);
+}
+
+let main = null, fam = [];
+function recompute() {
+  main = simulate(st.S, st.ang, st.v);
+  fam = [];
+  if (st.fam === 'rotate') {
+    for (let k = 1; k < 36; k++) fam.push(simulate(st.S, st.ang + k * 10, st.v));
+  } else if (st.fam === 'scale') {
+    for (const f of [0.25, 0.5, 0.75, 1.25, 1.5, 2, 2.5, 3.5]) fam.push(simulate(st.S, st.ang, st.v * f));
+  } else if (st.fam === 'parallel') {
+    const a = st.ang * Math.PI / 180, gap = st.region === 'circle' ? st.R / 5 : 0.8;
+    for (let k = -5; k <= 5; k++) {
+      if (!k) continue;
+      fam.push(simulate({ x: st.S.x - Math.sin(a) * k * gap, y: st.S.y + Math.cos(a) * k * gap }, st.ang, st.v));
+    }
+  }
+  fam = fam.filter(f => f.arc);
+}
+
+// ---------- 绘制 ----------
+function drawField() {
+  const W = view.W, H = view.H;
+  ctx.beginPath();
+  for (let x = Math.ceil(wx(0)); x <= wx(W); x++) { ctx.moveTo(sx(x) + 0.5, 0); ctx.lineTo(sx(x) + 0.5, H); }
+  for (let y = Math.ceil(wy(H)); y <= wy(0); y++) { ctx.moveTo(0, sy(y) + 0.5); ctx.lineTo(W, sy(y) + 0.5); }
+  ctx.strokeStyle = '#f1f2f6';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.save();
+  ctx.beginPath();
+  if (st.region === 'full') ctx.rect(0, 0, W, H);
+  else if (st.region === 'half') ctx.rect(sx(0), 0, W - sx(0), H);
+  else if (st.region === 'strip') ctx.rect(sx(-st.d / 2), 0, st.d * SC, H);
+  else ctx.arc(sx(0), sy(0), st.R * SC, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(124,58,237,.06)';
+  ctx.fill();
+  ctx.clip();
+  const g = 1.5, into = st.bdir < 0;
+  for (let x = Math.floor(wx(0) / g) * g; x <= wx(W); x += g) {
+    for (let y = Math.floor(wy(H) / g) * g; y <= wy(0); y += g) {
+      if (!inField(x + 0.75, y + 0.75)) continue;
+      const px = sx(x + 0.75), py = sy(y + 0.75);
+      if (into) {
+        line(ctx, px - 4, py - 4, px + 4, py + 4, 'rgba(124,58,237,.45)', 1.4);
+        line(ctx, px - 4, py + 4, px + 4, py - 4, 'rgba(124,58,237,.45)', 1.4);
+      } else {
+        dot(ctx, px, py, 2.6, 'rgba(124,58,237,.5)', null);
+        ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(124,58,237,.35)'; ctx.lineWidth = 1; ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+
+  const edge = '#6d28d9';
+  if (st.region === 'half') line(ctx, sx(0), 0, sx(0), H, edge, 2);
+  if (st.region === 'strip') {
+    line(ctx, sx(-st.d / 2), 0, sx(-st.d / 2), H, edge, 2);
+    line(ctx, sx(st.d / 2), 0, sx(st.d / 2), H, edge, 2);
+    const yb = wy(H) + 0.6;
+    vec(ctx, sx(0), sy(yb), sx(st.d / 2) - 2, sy(yb), edge, 1.2, 6);
+    vec(ctx, sx(0), sy(yb), sx(-st.d / 2) + 2, sy(yb), edge, 1.2, 6);
+    text(ctx, `d = ${fmt(st.d, 1)} cm`, sx(0), sy(yb) - 10, edge, { size: 12, bold: true });
+  }
+  if (st.region === 'circle') {
+    ctx.beginPath(); ctx.arc(sx(0), sy(0), st.R * SC, 0, Math.PI * 2); ctx.strokeStyle = edge; ctx.lineWidth = 2; ctx.stroke();
+    dot(ctx, sx(0), sy(0), 3, edge, null);
+    text(ctx, 'O', sx(0) - 9, sy(0) + 10, edge, { size: 12, bold: true });
+  }
+  text(ctx, `B = ${fmt(st.B, 2)} T，${into ? '× 垂直纸面向里' : '· 垂直纸面向外'}`, 12, 16, edge, { size: 13, bold: true, align: 'left' });
+  text(ctx, '背景每格 1 cm', 12, 36, '#9ca3af', { size: 12, align: 'left' });
+}
+
+function strokePath(path, color, width, alpha = 1, upto = Infinity) {
+  const p = path.pts;
+  if (p.length < 2) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.moveTo(sx(p[0].x), sy(p[0].y));
+  for (let i = 1; i < p.length && p[i].s <= upto; i++) ctx.lineTo(sx(p[i].x), sy(p[i].y));
+  if (upto < path.len) { const m = sampleAt(path, upto); ctx.lineTo(sx(m.x), sy(m.y)); }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function angleArc(cx, cy, r, a0, a1, ccw, color, label) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, -a0, -a1, ccw);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  const mid = a0 + (ccw ? 1 : -1) * normAng(ccw ? a1 - a0 : a0 - a1) / 2;
+  ctx.font = `bold 12px ${Lab.FONT}`;
+  const off = r + 8 + ctx.measureText(label).width / 2 * Math.abs(Math.cos(mid));
+  text(ctx, label, cx + Math.cos(mid) * off, cy - Math.sin(mid) * (r + 14), color, { size: 12, bold: true });
+  return mid;
+}
+const normAng = a => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+function drawGeometry(arc, r) {
+  if (!arc) return;
+  const c = arc.c, cx = sx(c.x), cy = sy(c.y);
+  const p1 = arc.p1, p2 = arc.p2;
+  line(ctx, sx(p1.x), sy(p1.y), cx, cy, COL.geo, 1.4, [5, 4]);
+  // 入射速度的垂线：延长到圆心之外，表示"圆心在速度垂线上"
+  const ext = (p, k) => [sx(p.x + (c.x - p.x) * k), sy(p.y + (c.y - p.y) * k)];
+  line(ctx, ...ext(p1, -0.15).map(Number), ...ext(p1, 1.25), 'rgba(15,118,110,.35)', 1);
+  text(ctx, 'r', (sx(p1.x) + cx) / 2 + 8, (sy(p1.y) + cy) / 2 - 8, COL.geo, { bold: true });
+  let mid = Math.atan2(p1.y - c.y, p1.x - c.x) + Math.PI / 2;
+  if (p2) {
+    line(ctx, sx(p2.x), sy(p2.y), cx, cy, COL.geo, 1.4, [5, 4]);
+    line(ctx, ...ext(p2, -0.15), ...ext(p2, 1.25), 'rgba(15,118,110,.35)', 1);
+    line(ctx, sx(p1.x), sy(p1.y), sx(p2.x), sy(p2.y), '#9ca3af', 1, [2, 4]);
+    const b1 = Math.atan2(p1.y - c.y, p1.x - c.x), b2 = Math.atan2(p2.y - c.y, p2.x - c.x);
+    const rr = Math.min(28, r * SC * 0.45);
+    mid = angleArc(cx, cy, rr, b1, b2, arc.sp > 0, COL.geo, `θ = ${fmt(arc.theta * 180 / Math.PI, 0)}°`);
+    // 偏转角：入射方向延长线与出射方向的夹角
+    const d1 = [Math.cos(arc.a1), Math.sin(arc.a1)], d2 = [Math.cos(arc.a2), Math.sin(arc.a2)];
+    const den = d1[0] * d2[1] - d1[1] * d2[0];
+    if (Math.abs(den) > 0.08 && arc.theta < Math.PI * 0.95) {
+      const t = ((p2.x - p1.x) * d2[1] - (p2.y - p1.y) * d2[0]) / den;
+      const ix = p1.x + d1[0] * t, iy = p1.y + d1[1] * t;
+      if (t > 0 && Math.hypot(ix, iy) < 30) {
+        line(ctx, sx(p1.x), sy(p1.y), sx(ix + d1[0] * 2), sy(iy + d1[1] * 2), '#9ca3af', 1, [4, 4]);
+        line(ctx, sx(ix), sy(iy), sx(p2.x), sy(p2.y), '#9ca3af', 1, [4, 4]);
+        angleArc(sx(ix), sy(iy), 22, arc.a1, arc.a2, arc.sp > 0, '#6b7280', `偏转角 ${fmt(arc.theta * 180 / Math.PI, 0)}°`);
+      }
+    }
+    dot(ctx, sx(p2.x), sy(p2.y), 4, COL.geo);
+  }
+  dot(ctx, sx(p1.x), sy(p1.y), 4, COL.geo);
+  dot(ctx, cx, cy, 4.5, COL.geo);
+  text(ctx, 'O′', cx - Math.cos(mid) * 16, cy + Math.sin(mid) * 16, COL.geo, { bold: true, size: 14 });
+}
+
+function drawParticle(x, y, a, insideField, center) {
+  const px = sx(x), py = sy(y);
+  if (st.vecs) {
+    vec(ctx, px, py, px + Math.cos(a) * 46, py - Math.sin(a) * 46, COL.v, 3, 9);
+    text(ctx, 'v', px + Math.cos(a) * 58, py - Math.sin(a) * 58, COL.v, { bold: true, size: 14 });
+    if (insideField && center) {
+      const ux = center.x - x, uy = center.y - y, L = Math.hypot(ux, uy);
+      vec(ctx, px, py, px + ux / L * 38, py - uy / L * 38, COL.F, 3, 9);
+      text(ctx, 'F', px + ux / L * 50, py - uy / L * 50, COL.F, { bold: true, size: 14 });
+    }
+  }
+  const col = st.q > 0 ? '#dc2626' : st.q < 0 ? '#2563eb' : '#6b7280';
+  dot(ctx, px, py, 9, col);
+  text(ctx, st.q > 0 ? '+' : st.q < 0 ? '−' : '0', px, py + 1, '#fff', { bold: true, size: 13, halo: false });
+}
+
+const HANDLE = 64;
+const tip = () => ({ x: sx(st.S.x) + Math.cos(st.ang * Math.PI / 180) * HANDLE, y: sy(st.S.y) - Math.sin(st.ang * Math.PI / 180) * HANDLE });
+
+function draw() {
+  view.begin();
+  drawField();
+  for (const f of fam) strokePath(f, '#f97316', 1.4, 0.55);
+  if (st.fam === 'rotate' && main.r < 40) {
+    ctx.beginPath(); ctx.arc(sx(st.S.x), sy(st.S.y), main.r * SC, 0, Math.PI * 2);
+    ctx.save(); ctx.setLineDash([3, 5]); ctx.strokeStyle = 'rgba(15,118,110,.6)'; ctx.lineWidth = 1.2; ctx.stroke(); ctx.restore();
+  }
+  const moving = st.s > 0;
+  strokePath(main, COL.path, 2.6, moving ? 0.25 : 0.9);
+  if (moving) strokePath(main, COL.path, 2.8, 1, st.s);
+  if (st.geo && main.arc) drawGeometry({ ...main.arc, sp: main.sp }, main.r);
+
+  const S = st.S, T = tip();
+  dot(ctx, sx(S.x), sy(S.y), 6, '#111827');
+  text(ctx, 'S', sx(S.x) - 12, sy(S.y) + 14, '#111827', { bold: true, size: 14 });
+  if (!moving) {
+    vec(ctx, sx(S.x), sy(S.y), T.x, T.y, COL.v, 3, 10);
+    dot(ctx, T.x, T.y, 7, '#fff', COL.v, 2.5);
+    text(ctx, `v（${fmt(st.ang, 0)}°）`, T.x + 14, T.y - 12, COL.v, { bold: true, align: 'left' });
+  } else {
+    const m = sampleAt(main, st.s);
+    const insideNow = main.sp !== 0 && inField(m.x, m.y) && main.arc;
+    drawParticle(m.x, m.y, m.a, insideNow, insideNow ? centerOf(m) : null);
+    const t = st.s / st.v * 0.1;
+    text(ctx, `t = ${sci(t, 2)} μs`, view.W - 12, 16, '#111827', { bold: true, align: 'right' });
+  }
+}
+
+function centerOf(m) {
+  const r = main.r, n = main.sp > 0 ? [-Math.sin(m.a), Math.cos(m.a)] : [Math.sin(m.a), -Math.cos(m.a)];
+  return { x: m.x + r * n[0], y: m.y + r * n[1] };
+}
+
+// ---------- 读数与分析 ----------
+const deg = a => a * 180 / Math.PI;
+const angleWithVertical = a => deg(Math.acos(Math.min(1, Math.abs(Math.sin(a)))));
+
+function updatePanel() {
+  const q = st.q, aq = Math.abs(q), r = radius(), T = period(), arc = main.arc;
+  const F = aq * 1.602e-19 * st.v * 1e5 * st.B;
+  let rows = `
+    <tr><td>洛伦兹力 F = qvB</td><td>${q ? sci(F, 2) + ' N' : '0'}</td></tr>
+    <tr><td>轨道半径 r = mv/(qB)</td><td>${q ? fmt(r, 2) + ' cm' : '—'}</td></tr>
+    <tr><td>周期 T = 2πm/(qB)</td><td>${q ? sci(T, 2) + ' μs' : '—'}</td></tr>`;
+  let result = '';
+  if (!q) result = '粒子不带电，不受洛伦兹力，做匀速直线运动';
+  else if (!arc) result = '粒子没有进入磁场';
+  else if (arc.closed) result = '在磁场中做完整的圆周运动';
+  else if (!arc.p2) result = '在磁场中运动到画面外';
+  else {
+    const th = deg(arc.theta);
+    rows += `
+      <tr><td>圆心角 θ（= 偏转角）</td><td>${fmt(th, 1)}°</td></tr>
+      <tr><td>磁场中运动时间 t = θ/360° · T</td><td>${sci(th / 360 * T, 2)} μs</td></tr>
+      <tr><td>入射点到出射点的弦长 2r·sin(θ/2)</td><td>${fmt(2 * r * Math.sin(arc.theta / 2), 2)} cm</td></tr>`;
+    result = exitSide(arc);
+  }
+  rows += `<tr><td colspan="2" style="text-align:left;font-weight:normal;color:#374151">结果：<b>${result}</b></td></tr>`;
+  $('tbl').innerHTML = rows;
+
+  if (!q) { $('chain').innerHTML = '<div class="node">q = 0 时 F = qvB = 0，粒子不偏转。把电荷量调成非零再试。</div>'; return; }
+  const sgn = q > 0 ? '正' : '负';
+  const rot = main.sp > 0 ? '逆时针' : '顺时针';
+  let html = `
+    <div class="node"><span class="f">① 判断偏转方向：左手定则</span><br>
+      <span class="v">${sgn}电荷，磁场${st.bdir < 0 ? '向里' : '向外'} → 沿<b>${rot}</b>方向偏转</span><br>
+      <span class="n">四指指向正电荷运动方向（负电荷则指向运动的反方向），磁感线穿过手心，拇指为洛伦兹力方向。</span></div>
+    <div class="link">↓ 洛伦兹力指向圆心</div>
+    <div class="node"><span class="f">② 找圆心：两条速度垂线的交点</span><br>
+      <span class="n">圆心 O′ 在入射点速度的垂线上；若知道出射点，出射速度的垂线也过 O′。</span></div>
+    <div class="link">↓ 洛伦兹力提供向心力 qvB = mv²/r</div>
+    <div class="node"><span class="f">③ 求半径：r = mv/(qB)</span><br>
+      <span class="v">${st.m} u × ${fmt(st.v, 2)}×10⁵ m/s ÷ (${aq}e × ${fmt(st.B, 2)} T) = ${fmt(r, 2)} cm</span></div>`;
+  if (arc && arc.p2) {
+    const th = deg(arc.theta);
+    html += `
+    <div class="link">↓ 偏转角 = 圆心角</div>
+    <div class="node"><span class="f">④ 定时间：t = θ/360° · T</span><br>
+      <span class="v">${fmt(th, 1)}° ÷ 360° × ${sci(T, 2)} μs = ${sci(th / 360 * T, 2)} μs</span></div>`;
+  }
+  const extra = regionNote(arc, r);
+  if (extra) html += `<div class="link">↓ 本模型的特点</div><div class="node">${extra}</div>`;
+  $('chain').innerHTML = html;
+}
+
+function exitSide(arc) {
+  const p = arc.p2, e = 1e-3;
+  if (st.region === 'half') return '从直线边界射出';
+  if (st.region === 'strip') return Math.abs(p.x - st.d / 2) < e ? '从右边界穿出' : '从左边界返回';
+  return '从圆形边界射出';
+}
+
+function regionNote(arc, r) {
+  if (!arc || arc.closed || !arc.p2) {
+    if (st.region === 'full') return '<span class="f">整个空间都有磁场</span>：粒子做完整的匀速圆周运动，转一圈用时 T，与速度大小无关。改变 v 看看半径和周期哪个变。';
+    return '';
+  }
+  const p1 = arc.p1, p2 = arc.p2;
+  if (st.region === 'half') {
+    const i1 = angleWithVertical(arc.a1), i2 = angleWithVertical(arc.a2);
+    return `<span class="f">单直线边界：进出对称</span><br>
+      <span class="v">入射时速度与边界夹角 ${fmt(i1, 1)}°，出射时 ${fmt(i2, 1)}°</span><br>
+      <span class="n">圆心角 θ = ${fmt(deg(arc.theta), 1)}°，等于夹角的 2 倍（劣弧）或 360° 减去 2 倍夹角（优弧）。</span>`;
+  }
+  if (st.region === 'strip') {
+    const fromLeft = Math.abs(p1.x + st.d / 2) < 1e-3 && Math.cos(arc.a1) > 0;
+    if (!fromLeft) return '';
+    const den = 1 - arc.sp * Math.sin(arc.a1);
+    if (den < 1e-3) return '';
+    const rc = st.d / den, vc = rc * Math.abs(st.q) * st.B / (st.m * KR);
+    const pass = r > rc;
+    return `<span class="f">双边界：临界轨迹与右边界相切</span><br>
+      <span class="v">临界半径 r₀ = ${fmt(rc, 2)} cm，临界速度 v₀ = ${fmt(vc, 2)}×10⁵ m/s</span><br>
+      当前 v = ${fmt(st.v, 2)}×10⁵ m/s ${pass ? '<span class="good">&gt; v₀，从右边界穿出</span>' : '<span class="bad">&lt; v₀，从左边界返回</span>'}<br>
+      <span class="n">把速度调到 ${fmt(vc, 2)} 附近，观察轨迹恰好与右边界相切。</span>`;
+  }
+  if (st.region === 'circle') {
+    const L1 = Math.hypot(p1.x, p1.y), L2 = Math.hypot(p2.x, p2.y);
+    const radialIn = (-p1.x * Math.cos(arc.a1) - p1.y * Math.sin(arc.a1)) / L1;
+    const radialOut = (p2.x * Math.cos(arc.a2) + p2.y * Math.sin(arc.a2)) / L2;
+    const isRadial = radialIn > Math.cos(Math.PI / 180);
+    let s = `<span class="f">圆形磁场区域</span><br>`;
+    if (isRadial) {
+      const th = 2 * Math.atan(st.R / r);
+      s += `<span class="good">沿半径方向射入</span> → 出射方向与半径夹角 ${fmt(deg(Math.acos(Math.min(1, radialOut))), 1)}°，即沿半径射出。<br>
+        <span class="v">tan(θ/2) = R/r = ${fmt(st.R, 1)} / ${fmt(r, 2)} → θ = ${fmt(deg(th), 1)}°</span>`;
+    } else {
+      s += '入射方向没有对准圆心 O。把绿色箭头对准 O 试试「径向进、径向出」。';
+    }
+    if (Math.abs(r - st.R) < 0.02 * st.R) s += '<br><span class="good">r ≈ R：满足磁聚焦条件</span>，选「平行束」看会聚。';
+    return s;
+  }
+  return '';
+}
+
+function render() {
+  if (!view.W) return;
+  recompute();
+  draw();
+  updatePanel();
+}
+
+// ---------- 动画 ----------
+const anim = Lab.loop(dt => {
+  const dur = Math.min(9, Math.max(3, main.len / 4));
+  st.s = Math.min(main.len, st.s + dt * main.len / dur);
+  draw();
+  if (st.s >= main.len) { $('play').textContent = '▶ 再发射一次'; return false; }
+});
+$('play').addEventListener('click', () => { st.s = 1e-6; $('play').textContent = '运动中…'; anim.start(); });
+function stopAnim() { anim.stop(); st.s = 0; $('play').textContent = '▶ 发射'; }
+$('reset').addEventListener('click', () => { stopAnim(); render(); });
+
+// ---------- 拖动 ----------
+function snapS(x, y) {
+  const e = 0.3;
+  if (st.region === 'half' && Math.abs(x) < e) x = 0;
+  if (st.region === 'strip') for (const b of [-st.d / 2, st.d / 2]) if (Math.abs(x - b) < e) x = b;
+  if (st.region === 'circle') {
+    const L = Math.hypot(x, y);
+    if (L > 0 && Math.abs(L - st.R) < e) { x *= st.R / L; y *= st.R / L; }
+  }
+  return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+}
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    const T = tip();
+    if (Math.hypot(px - T.x, py - T.y) < rad) return 'tip';
+    if (Math.hypot(px - sx(st.S.x), py - sy(st.S.y)) < rad) return 'S';
+    return null;
+  },
+  move(h, px, py) {
+    stopAnim();
+    if (h === 'S') {
+      const hw = view.W / 2 / SC - 0.3, hh = view.H / 2 / SC - 0.3;
+      st.S = snapS(Math.max(-hw, Math.min(hw, wx(px))), Math.max(-hh, Math.min(hh, wy(py))));
+    } else {
+      const a = Math.atan2(sy(st.S.y) - py, px - sx(st.S.x)) * 180 / Math.PI;
+      st.ang = Math.round(a / 5) * 5;
+      if (st.ang <= -180) st.ang += 360;
+      Lab.setRange('ang', st.ang);
+    }
+    render();
+  },
+});
+
+// ---------- 控件 ----------
+const upd = () => { stopAnim(); render(); };
+function showRegionRows() {
+  $('dRow').style.display = st.region === 'strip' ? '' : 'none';
+  $('RRow').style.display = st.region === 'circle' ? '' : 'none';
+}
+$('region').addEventListener('change', e => { st.region = e.target.value; showRegionRows(); upd(); });
+Lab.range('d', v => `${fmt(v, 1)} cm`, v => { st.d = v; upd(); });
+Lab.range('R', v => `${fmt(v, 1)} cm`, v => { st.R = v; upd(); });
+Lab.range('B', v => `${fmt(v, 2)} T`, v => { st.B = v; upd(); });
+Lab.range('q', v => (v ? `${v > 0 ? '+' : '−'}${Math.abs(v)}e` : '0'), v => { st.q = v; upd(); });
+Lab.range('m', v => `${v} u`, v => { st.m = v; upd(); });
+Lab.range('v', v => `${fmt(v, 2)}×10⁵ m/s`, v => { st.v = v; upd(); });
+Lab.range('ang', v => `${v}°`, v => { st.ang = v; upd(); });
+Lab.radios('bdir', v => { st.bdir = +v; upd(); });
+Lab.radios('fam', v => { st.fam = v; upd(); });
+$('geo').addEventListener('change', e => { st.geo = e.target.checked; upd(); });
+$('vecs').addEventListener('change', e => { st.vecs = e.target.checked; upd(); });
+document.querySelectorAll('[data-particle]').forEach(b => b.addEventListener('click', () => {
+  const [q, m] = b.dataset.particle.split(',').map(Number);
+  st.q = q; st.m = m;
+  Lab.setRange('q', q); Lab.setRange('m', m);
+  upd();
+}));
+
+const PRESETS = {
+  full: { region: 'full', S: [0, -4], ang: 0, v: 4, B: 0.1, fam: 'none' },
+  half: { region: 'half', S: [-5, -6.5], ang: 30, v: 4, B: 0.1, fam: 'none' },
+  strip: { region: 'strip', d: 4, S: [-8, -2], ang: 0, v: 3.5, B: 0.1, fam: 'none' },
+  circle: { region: 'circle', R: 4, S: [-9, 0], ang: 0, v: 4, B: 0.1, fam: 'none' },
+  rotate: { region: 'half', S: [0, -2], ang: 30, v: 3, B: 0.1, fam: 'rotate' },
+  scale: { region: 'half', S: [0, -5], ang: 60, v: 3, B: 0.1, fam: 'scale' },
+  focus: { region: 'circle', R: 4, S: [-9, 0], ang: 0, v: 3.86, B: 0.1, fam: 'parallel' },
+};
+function loadPreset(name) {
+  const p = PRESETS[name];
+  Object.assign(st, { region: p.region, ang: p.ang, v: p.v, B: p.B, fam: p.fam, q: 1, m: 1, bdir: -1 });
+  if (p.d) st.d = p.d;
+  if (p.R) st.R = p.R;
+  st.S = { x: p.S[0], y: p.S[1] };
+  $('region').value = st.region;
+  for (const k of ['d', 'R', 'B', 'q', 'm', 'v', 'ang']) Lab.setRange(k, st[k]);
+  Lab.setRadio('bdir', -1);
+  Lab.setRadio('fam', st.fam);
+  showRegionRows();
+  upd();
+}
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => loadPreset(b.dataset.preset)));
+
+loadPreset('half');
+</script>
+</body>
+</html>

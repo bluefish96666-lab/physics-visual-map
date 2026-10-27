@@ -11,6 +11,16 @@
 
 - `labs/electric-field.html`：拖动电荷，实时看电场线、等势线、场强和电势。
 - `labs/potential-work.html`：沿三条路径移动电荷，验证电场力做功与路径无关。
+- `labs/capacitor.html`：电容器动态分析，对比 U 不变和 Q 不变。
+- `labs/voltammetry.html`：伏安法测电阻，内接、外接误差与试触法。
+- `labs/closed-circuit.html`：闭合电路欧姆定律、U–I 图线、输出功率；可换成热敏/光敏电阻（传感器）。
+- `labs/magnetic-particle.html`：带电粒子在磁场中的运动，找圆心、旋转圆、放缩圆、磁聚焦。
+- `labs/induction-rails.html`：导体棒切割磁感线，收尾速度与能量转化。
+- `labs/ac-generator.html`：交变电流的产生，e–t 与 Φ–t 图像，峰值、有效值、平均值。
+- `labs/power-transmission.html`：远距离输电，升压比与线路损耗。
+- `labs/lc-oscillation.html`：LC 电磁振荡，电场能与磁场能的转化。
+
+适合电脑和平板（横屏或竖屏），不针对手机排版。实验共用 `assets/lab.css` 和 `assets/lab.js`。
 
 ## 其他
 

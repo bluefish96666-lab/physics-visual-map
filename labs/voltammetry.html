@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>伏安法测电阻：内接与外接 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>伏安法测电阻：内接与外接</b><span class="crumb">必修第三册 · 第十一章 电路及其应用</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">点击电压表引线的触点 a 或 b 切换接法（试触法）</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">真实电表有内阻：电流表内阻 R<sub>A</sub> 很小但不为零，电压表内阻 R<sub>V</sub> 很大但不是无穷大。所以无论怎么接，测量值 U/I 都有误差。口诀：<b>大内偏大，小外偏小</b>。</div>
+
+    <h2>接法</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="conn" value="out" checked> 电流表外接（引线接 a）</label>
+      <label class="chk"><input type="radio" name="conn" value="in"> 电流表内接（引线接 b）</label>
+    </div>
+
+    <h2>参数</h2>
+    <div class="row">待测电阻 R<sub>x</sub> <input type="range" id="lx" min="0" max="4" step="0.01" value="1"><span class="val" id="lxv"></span></div>
+    <div class="row">电流表内阻 R<sub>A</sub> <input type="range" id="RA" min="0.1" max="10" step="0.1" value="0.5"><span class="val" id="RAv"></span></div>
+    <div class="row">电压表内阻 R<sub>V</sub> <input type="range" id="RV" min="1" max="30" step="0.5" value="3"><span class="val" id="RVv"></span></div>
+    <div class="row">电源电动势 E <input type="range" id="E" min="1.5" max="6" step="0.5" value="3"><span class="val" id="Ev"></span></div>
+
+    <h2>测量结果</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>调一调，验证这些结论</summary>
+      <ul>
+        <li>外接法：电压表分流，电流表读数偏大，R<sub>测</sub> = R<sub>x</sub>R<sub>V</sub>/(R<sub>x</sub> + R<sub>V</sub>) &lt; R<sub>x</sub>，适合测<b>小电阻</b>。</li>
+        <li>内接法：电流表分压，电压表读数偏大，R<sub>测</sub> = R<sub>x</sub> + R<sub>A</sub> &gt; R<sub>x</sub>，适合测<b>大电阻</b>。</li>
+        <li>临界值：R<sub>x</sub> &gt; √(R<sub>A</sub>R<sub>V</sub>) 用内接，R<sub>x</sub> &lt; √(R<sub>A</sub>R<sub>V</sub>) 用外接。</li>
+        <li>试触法：引线在 a、b 间切换，若电流表示数变化明显（ΔI/I 大），说明电压表分流影响大，用内接；若电压表示数变化明显（ΔU/U 大），用外接。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, sci, text, line, vec, dot } = Lab;
+const st = { conn: 'out', Rx: 10, RA: 0.5, RV: 3000, E: 3 };
+
+function measure(conn, s = st) {
+  if (conn === 'out') {
+    const Rp = s.Rx * s.RV / (s.Rx + s.RV), I = s.E / (s.RA + Rp), U = I * Rp;
+    return { U, I, Ix: U / s.Rx, IV: U / s.RV, Rm: U / I };
+  }
+  const I = s.E / (s.RA + s.Rx), U = s.E, IV = s.E / s.RV;
+  return { U, I, Ix: I, IV, Rm: U / I };
+}
+const fR = R => (R >= 1000 ? `${fmt(R / 1000, 2)} kΩ` : `${fmt(R, R < 10 ? 2 : 1)} Ω`);
+
+// ---------- 电路 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let G = null;
+
+function meter(c, x, y, label, color) {
+  c.beginPath(); c.arc(x, y, 17, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
+  c.strokeStyle = color; c.lineWidth = 2; c.stroke();
+  text(c, label, x, y + 1, color, { bold: true, size: 15, halo: false });
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H, m = measure(st.conn);
+  view.begin();
+  const L = Math.max(80, W * 0.12), R = Math.min(W - 160, L + 560);
+  const T = H * 0.42, B = H * 0.82, Y2 = H * 0.18;
+  const xb = L + (R - L) * 0.28, xA = L + (R - L) * 0.45, xa = L + (R - L) * 0.62, xV = R;
+  const xr = L + (R - L) * 0.78;
+  G = { xa, xb, Y2, T };
+  const wire = '#374151';
+  // 主回路
+  line(c, L, T, xA - 17, T, wire, 2); line(c, xA + 17, T, xr, T, wire, 2);
+  line(c, L, B, xV, B, wire, 2);
+  line(c, L, T, L, (T + B) / 2 - 18, wire, 2); line(c, L, (T + B) / 2 + 8, L, B, wire, 2);
+  line(c, L - 18, (T + B) / 2 - 18, L + 18, (T + B) / 2 - 18, wire, 2.5);
+  line(c, L - 9, (T + B) / 2 - 8, L + 9, (T + B) / 2 - 8, wire, 5);
+  text(c, `E = ${fmt(st.E, 1)} V`, L - 24, (T + B) / 2 - 12, '#111827', { size: 12, bold: true, align: 'right' });
+  meter(c, xA, T, 'A', '#b45309');
+  text(c, `I = ${sci(m.I * 1000, 3)} mA`, xA, T + 32, '#b45309', { bold: true, size: 13 });
+  // 待测电阻
+  line(c, xr, T, xr, (T + B) / 2 - 30, wire, 2); line(c, xr, (T + B) / 2 + 30, xr, B, wire, 2);
+  c.fillStyle = '#fef3c7'; c.fillRect(xr - 10, (T + B) / 2 - 30, 20, 60);
+  c.strokeStyle = wire; c.lineWidth = 1.5; c.strokeRect(xr - 10, (T + B) / 2 - 30, 20, 60);
+  text(c, `Rx = ${fR(st.Rx)}`, xr - 16, (T + B) / 2, '#92400e', { size: 12, bold: true, align: 'right' });
+  // 电压表支路：一端接 Rx 下端，另一端在 a、b 间切换
+  line(c, xV, B, xV, (Y2 + B) / 2 + 17, wire, 2);
+  meter(c, xV, (Y2 + B) / 2, 'V', '#1d4ed8');
+  text(c, `U = ${fmt(m.U, 3)} V`, xV + 24, (Y2 + B) / 2, '#1d4ed8', { bold: true, size: 13, align: 'left' });
+  line(c, xV, (Y2 + B) / 2 - 17, xV, Y2, wire, 2);
+  const xc = st.conn === 'out' ? xa : xb;
+  line(c, xV, Y2, xc + 10, Y2, wire, 2);
+  for (const [x, name] of [[xa, 'a'], [xb, 'b']]) {
+    line(c, x, T, x, T - 22, wire, 1.5);
+    dot(c, x, T - 22, 5, x === xc ? '#2563eb' : '#fff', '#2563eb', 2);
+    dot(c, x, T, 3.5, wire, null);
+    text(c, name, x - 12, T - 26, '#2563eb', { bold: true, size: 14 });
+  }
+  line(c, xc + 10, Y2, xc, T - 26, '#2563eb', 2.5);
+  text(c, st.conn === 'out' ? '外接法：电压表直接并在 Rx 两端' : '内接法：电压表并在「电流表 + Rx」两端', (L + R) / 2, Y2 - 22, '#2563eb', { bold: true, size: 14 });
+  // 电流分配
+  const col = '#f59e0b';
+  vec(c, xr - 14, T + 14, xr - 14, T + 44, col, 2, 7);
+  text(c, `Ix = ${sci(m.Ix * 1000, 3)} mA`, xr - 20, T + 30, col, { size: 12, align: 'right' });
+  text(c, `IV = ${sci(m.IV * 1000, 3)} mA`, xV + 24, (Y2 + B) / 2 + 22, col, { size: 12, align: 'left' });
+}
+
+// ---------- 曲线：相对误差随 Rx 变化 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx;
+  chartView.begin();
+  const outE = [], inE = [];
+  for (let l = 0; l <= 4.0001; l += 0.02) {
+    const Rx = Math.pow(10, l);
+    outE.push([l, Rx / (Rx + st.RV) * 100]);
+    inE.push([l, st.RA / Rx * 100]);
+  }
+  const crit = Math.log10(Math.sqrt(st.RA * st.RV));
+  const lx = Math.log10(st.Rx), cur = st.conn === 'out' ? st.Rx / (st.Rx + st.RV) * 100 : st.RA / st.Rx * 100;
+  Lab.plot(c, { x: 0, y: 0, w: chartView.W, h: chartView.H }, {
+    xmin: 0, xmax: 4, ymin: 0, ymax: 20, xticks: 4, xlabel: 'Rx（对数刻度）', ylabel: '相对误差 |R测 − Rx| / Rx（%）', legendX: 230,
+    xfmt: v => (v >= 3 ? `${Math.pow(10, v - 3)} kΩ` : `${Math.pow(10, v)} Ω`),
+    series: [{ pts: outE, color: '#16a34a', label: '外接（偏小）' }, { pts: inE, color: '#dc2626', label: '内接（偏大）' }],
+    vlines: [{ x: crit, color: '#6b7280', label: `√(RA·RV) = ${fR(Math.sqrt(st.RA * st.RV))}` }],
+    points: [{ x: lx, y: Math.min(cur, 19.5), color: st.conn === 'out' ? '#16a34a' : '#dc2626', label: `${fmt(cur, 2)}%` }],
+  });
+}
+
+// ---------- 读数 ----------
+function updatePanel() {
+  const o = measure('out'), i = measure('in'), m = st.conn === 'out' ? o : i;
+  const err = (m.Rm - st.Rx) / st.Rx * 100;
+  $('tbl').innerHTML = `
+    <tr><td>电压表读数 U</td><td>${fmt(m.U, 3)} V</td></tr>
+    <tr><td>电流表读数 I</td><td>${sci(m.I * 1000, 3)} mA</td></tr>
+    <tr><td>测量值 R<sub>测</sub> = U/I</td><td>${fR(m.Rm)}</td></tr>
+    <tr><td>真实值 R<sub>x</sub></td><td>${fR(st.Rx)}</td></tr>
+    <tr><td>相对误差</td><td class="${err > 0 ? 'bad' : 'good'}">${err > 0 ? '+' : ''}${fmt(err, 2)}%（${err > 0 ? '偏大' : '偏小'}）</td></tr>`;
+  const crit = Math.sqrt(st.RA * st.RV), best = st.Rx > crit ? 'in' : 'out';
+  const dU = Math.abs(i.U - o.U) / o.U, dI = Math.abs(i.I - o.I) / o.I;
+  const tryBest = dI > dU ? 'in' : 'out';
+  $('chain').innerHTML = `
+    <div class="node"><span class="f">${st.conn === 'out' ? '外接：电压表分流' : '内接：电流表分压'}</span><br>
+      <span class="v">${st.conn === 'out' ? `R测 = RxRV/(Rx + RV) = ${fR(m.Rm)}` : `R测 = Rx + RA = ${fR(m.Rm)}`}</span></div>
+    <div class="link">↓ 比较 Rx 与临界电阻</div>
+    <div class="node"><span class="f">√(R<sub>A</sub>R<sub>V</sub>) = √(${fmt(st.RA, 1)} × ${fR(st.RV)}) = ${fR(crit)}</span><br>
+      R<sub>x</sub> = ${fR(st.Rx)} ${st.Rx > crit ? '&gt;' : '&lt;'} ${fR(crit)} → 应选 <b>${best === 'in' ? '内接法' : '外接法'}</b>
+      ${best === st.conn ? '<span class="good">（当前接法正确）</span>' : '<span class="bad">（当前接法误差较大）</span>'}</div>
+    <div class="link">↓ 不知道 R<sub>A</sub>、R<sub>V</sub> 时用试触法</div>
+    <div class="node"><span class="f">引线从 a 换到 b</span><br>
+      <span class="v">电压表示数相对变化 ΔU/U = ${fmt(dU * 100, 2)}%</span><br>
+      <span class="v">电流表示数相对变化 ΔI/I = ${fmt(dI * 100, 2)}%</span><br>
+      ${dI > dU ? '电流表变化更明显 → 电压表分流影响大 → 用<b>内接法</b>' : '电压表变化更明显 → 电流表分压影响大 → 用<b>外接法</b>'}
+      ${tryBest === best ? '' : '<br><span class="n">（两者都很小时，试触结论可能与临界值判断不一致，此时两种接法误差都很小。）</span>'}</div>`;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+
+function setConn(v) { st.conn = v; Lab.setRadio('conn', v); render(); }
+Lab.radios('conn', setConn);
+const contactAt = e => {
+  if (!G) return null;
+  const r = $('cv').getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  const rad = e.pointerType === 'touch' ? 30 : 18;
+  for (const [x, v] of [[G.xa, 'out'], [G.xb, 'in']]) if (Math.hypot(px - x, py - (G.T - 22)) < rad) return v;
+  return null;
+};
+$('cv').addEventListener('pointerdown', e => { const v = contactAt(e); if (v) setConn(v); });
+$('cv').addEventListener('pointermove', e => { $('cv').style.cursor = contactAt(e) ? 'pointer' : 'default'; });
+Lab.range('lx', v => fR(Math.pow(10, v)), v => { st.Rx = Math.pow(10, v); render(); });
+Lab.range('RA', v => `${fmt(v, 1)} Ω`, v => { st.RA = v; render(); });
+Lab.range('RV', v => `${fmt(v, 1)} kΩ`, v => { st.RV = v * 1000; render(); });
+Lab.range('E', v => `${fmt(v, 1)} V`, v => { st.E = v; render(); });
+render();
+</script>
+</body>
+</html>

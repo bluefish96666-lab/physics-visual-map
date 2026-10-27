@@ -38,6 +38,14 @@ window.PHET = {
 window.LABS = {
   'electric-field': { name: '电场线与等势线', desc: '拖动电荷，实时看电场线、等势线、场强和电势' },
   'potential-work': { name: '电势差与电场力做功', desc: '沿三条路径移动电荷，验证做功与路径无关' },
+  'capacitor': { name: '电容器的动态分析', desc: '拖动极板、插电介质，对比 U 不变和 Q 不变两种情况', icon: '▥' },
+  'voltammetry': { name: '伏安法测电阻', desc: '电流表内接、外接的误差对比，试触法选择接法', icon: 'Ⓐ' },
+  'closed-circuit': { name: '闭合电路欧姆定律', desc: '拖动滑动变阻器，看路端电压、U–I 图线和输出功率；可换成热敏/光敏电阻', icon: 'Ω' },
+  'magnetic-particle': { name: '带电粒子在磁场中的运动', desc: '找圆心、求半径；旋转圆、放缩圆、磁聚焦', icon: '↻' },
+  'induction-rails': { name: '导体棒切割磁感线', desc: '恒力拉动、初速度滑行，看收尾速度和能量转化', icon: '⇥', home: 'b5c2' },
+  'ac-generator': { name: '交变电流的产生', desc: '线圈在磁场中转动，对照 e–t 和 Φ–t 图像', icon: '∿' },
+  'power-transmission': { name: '远距离输电', desc: '调升压比，看线路电流、损耗和用户电压怎么变', icon: '⇌' },
+  'lc-oscillation': { name: 'LC 电磁振荡', desc: '电场能和磁场能相互转化，q、i 相差四分之一周期', icon: '⌇' },
 };
 
 window.CURRICULUM = [
@@ -156,7 +164,7 @@ window.CURRICULUM = [
         phet: ['charges-and-fields', 'coulombs-law'],
       },
       {
-        id: 'b3c10', num: '第十章', title: '静电场中的能量', domain: 'em', fig: 'plates', labs: ['potential-work', 'electric-field'],
+        id: 'b3c10', num: '第十章', title: '静电场中的能量', domain: 'em', fig: 'plates', labs: ['potential-work', 'capacitor', 'electric-field'],
         sections: [
           ['电势能和电势', '电场力做功与路径无关，W_AB = E_pA − E_pB；电势 φ = E_p/q，沿电场线方向电势逐渐降低。', 'φ = E_p / q'],
           ['电势差', '电势差与零电势点的选取无关；电场力做功等于电荷量乘以电势差。', 'U_AB = φ_A − φ_B，W_AB = qU_AB'],
@@ -168,7 +176,7 @@ window.CURRICULUM = [
         phet: ['capacitor-lab-basics', 'charges-and-fields'],
       },
       {
-        id: 'b3c11', num: '第十一章', title: '电路及其应用', domain: 'em', fig: 'circuit',
+        id: 'b3c11', num: '第十一章', title: '电路及其应用', domain: 'em', fig: 'circuit', labs: ['voltammetry'],
         sections: [
           ['电源和电流', '电流的定义和微观表达式。', 'I = q/t = nqSv'],
           ['导体的电阻', '电阻定律；电阻率由材料和温度决定。', 'R = ρl/S，I = U/R'],
@@ -180,7 +188,7 @@ window.CURRICULUM = [
         phet: ['circuit-construction-kit-dc', 'resistance-in-a-wire', 'ohms-law'],
       },
       {
-        id: 'b3c12', num: '第十二章', title: '电能 能量守恒定律', domain: 'em', fig: 'closed',
+        id: 'b3c12', num: '第十二章', title: '电能 能量守恒定律', domain: 'em', fig: 'closed', labs: ['closed-circuit'],
         sections: [
           ['电路中的能量转化', '纯电阻电路电功等于电热；电动机等非纯电阻电路电功大于电热。', 'W = UIt，P = UI，Q = I²Rt'],
           ['闭合电路的欧姆定律', '外电阻增大时路端电压增大；U-I 图像纵截距是电动势，斜率的绝对值是内阻。', 'I = E / (R + r)，U = E − Ir'],
@@ -191,7 +199,7 @@ window.CURRICULUM = [
         phet: ['circuit-construction-kit-dc'],
       },
       {
-        id: 'b3c13', num: '第十三章', title: '电磁感应与电磁波初步', domain: 'em', fig: 'magnet',
+        id: 'b3c13', num: '第十三章', title: '电磁感应与电磁波初步', domain: 'em', fig: 'magnet', labs: ['induction-rails'],
         sections: [
           ['磁场 磁感线', '磁感线是闭合曲线，磁体外部从 N 到 S，内部从 S 到 N；电流的磁场用安培定则（右手螺旋定则）判断。'],
           ['磁感应强度 磁通量', 'B = F/(IL)（I 垂直于 B 时）；磁通量 Φ = BS（S 垂直于 B 时）。', 'Φ = BS'],
@@ -262,7 +270,7 @@ window.CURRICULUM = [
   {
     id: 'b5', name: '选择性必修第二册', chapters: [
       {
-        id: 'b5c1', num: '第一章', title: '安培力与洛伦兹力', domain: 'em', fig: 'lorentz',
+        id: 'b5c1', num: '第一章', title: '安培力与洛伦兹力', domain: 'em', fig: 'lorentz', labs: ['magnetic-particle'],
         sections: [
           ['磁场对通电导线的作用力', '安培力方向用左手定则判断，垂直于 B 和 I 决定的平面。', 'F = ILB sinθ'],
           ['磁场对运动电荷的作用力', '洛伦兹力方向用左手定则（四指指向正电荷运动方向）；洛伦兹力始终与速度垂直，永不做功。', 'F = qvB'],
@@ -273,7 +281,7 @@ window.CURRICULUM = [
         phet: [],
       },
       {
-        id: 'b5c2', num: '第二章', title: '电磁感应', domain: 'em', fig: 'rails',
+        id: 'b5c2', num: '第二章', title: '电磁感应', domain: 'em', fig: 'rails', labs: ['induction-rails'],
         sections: [
           ['楞次定律', '感应电流的磁场总要阻碍引起感应电流的磁通量的变化（增反减同、来拒去留）；导体切割磁感线时可用右手定则。'],
           ['法拉第电磁感应定律', '感应电动势的大小与磁通量的变化率成正比。', 'E = nΔΦ/Δt，导体切割 E = BLv'],
@@ -284,7 +292,7 @@ window.CURRICULUM = [
         phet: ['faradays-law', 'faradays-electromagnetic-lab'],
       },
       {
-        id: 'b5c3', num: '第三章', title: '交变电流', domain: 'em', fig: 'ac',
+        id: 'b5c3', num: '第三章', title: '交变电流', domain: 'em', fig: 'ac', labs: ['ac-generator', 'power-transmission'],
         sections: [
           ['交变电流', '线圈在匀强磁场中绕垂直于磁场的轴匀速转动；在中性面时磁通量最大、感应电动势为零。', 'e = E_m sin ωt，E_m = nBSω'],
           ['交变电流的描述', '有效值根据电流的热效应定义；正弦交变电流的有效值等于峰值除以 √2。', 'U = U_m / √2'],
@@ -295,7 +303,7 @@ window.CURRICULUM = [
         phet: ['faradays-electromagnetic-lab'],
       },
       {
-        id: 'b5c4', num: '第四章', title: '电磁振荡与电磁波', domain: 'em', fig: 'lc',
+        id: 'b5c4', num: '第四章', title: '电磁振荡与电磁波', domain: 'em', fig: 'lc', labs: ['lc-oscillation'],
         sections: [
           ['电磁振荡', 'LC 振荡电路中电场能与磁场能周期性地相互转化。', 'T = 2π√(LC)'],
           ['电磁场与电磁波', '变化的磁场产生电场，变化的电场产生磁场；电磁波是横波，可以在真空中传播。'],
@@ -306,7 +314,7 @@ window.CURRICULUM = [
         phet: [],
       },
       {
-        id: 'b5c5', num: '第五章', title: '传感器', domain: 'em', fig: 'sensor',
+        id: 'b5c5', num: '第五章', title: '传感器', domain: 'em', fig: 'sensor', labs: ['closed-circuit'],
         sections: [
           ['认识传感器', '把温度、光、力等非电学量转换为电压、电流、电阻等电学量。'],
           ['常见传感器的工作原理及应用', '光敏电阻光照越强电阻越小；负温度系数热敏电阻温度升高电阻减小；霍尔元件把磁学量转换为电压。', 'U_H = k·IB/d'],

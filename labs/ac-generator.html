@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交变电流的产生 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>交变电流的产生</b><span class="crumb">选择性必修第二册 · 第三章 交变电流</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">沿转轴方向看（端视图）· 暂停后可拖动线圈端点转到任意位置</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">线圈在匀强磁场中绕垂直于磁场的轴匀速转动，产生正弦式交变电流。对照下方曲线看：<b>线圈在中性面时 Φ 最大，e 却为零</b>；转过 90° 时 Φ 为零，e 最大。</div>
+
+    <h2>转动</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">⏸ 暂停</button><button id="toN">转到中性面</button><button id="toP">转到垂直中性面</button></div>
+    <div class="row">转速 n <input type="range" id="n" min="0.1" max="2" step="0.05" value="0.5"><span class="val" id="nv"></span></div>
+    <div class="row">计时起点
+      <label class="chk"><input type="radio" name="t0" value="n" checked> 中性面</label>
+      <label class="chk"><input type="radio" name="t0" value="p"> 垂直中性面</label>
+    </div>
+
+    <h2>发电机与外电路</h2>
+    <div class="row">匝数 N <input type="range" id="N" min="10" max="200" step="10" value="100"><span class="val" id="Nv"></span></div>
+    <div class="row">磁感应强度 B <input type="range" id="B" min="0.1" max="1" step="0.05" value="0.5"><span class="val" id="Bv"></span></div>
+    <div class="row">线圈面积 S <input type="range" id="S" min="100" max="900" step="50" value="400"><span class="val" id="Sv"></span></div>
+    <div class="row">外电阻 R <input type="range" id="R" min="1" max="50" step="1" value="9"><span class="val" id="Rv"></span></div>
+    <div class="row">线圈电阻 r <input type="range" id="r" min="0" max="10" step="0.5" value="1"><span class="val" id="rv"></span></div>
+
+    <h2>瞬时值</h2>
+    <table class="tbl" id="now"></table>
+    <h2>峰值、有效值与平均值</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>转一转，验证这些结论</summary>
+      <ul>
+        <li>中性面：线圈平面与磁场垂直，Φ 最大，ΔΦ/Δt = 0，e = 0；线圈每经过一次中性面，电流方向改变一次。</li>
+        <li>线圈平面与磁场平行时，Φ = 0，但 ΔΦ/Δt 最大，e = E<sub>m</sub>。</li>
+        <li>峰值 E<sub>m</sub> = NBSω，与转轴位置、线圈形状无关。</li>
+        <li>有效值 E = E<sub>m</sub>/√2（只适用于正弦式交流）；电表读数、铭牌、计算热量都用有效值。</li>
+        <li>算电荷量用平均值：q = NΔΦ/(R + r)，从中性面转过 90° 时 q = NBS/(R + r)。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, sci, text, line, vec, dot } = Lab;
+const st = { n: 0.5, N: 100, B: 0.5, S: 400, R: 9, r: 1, t0: 'n', theta: 0, hist: [] };
+// theta：线圈法线与 B 的夹角（从中性面算起转过的角度）
+
+function q() {
+  const w = 2 * Math.PI * st.n, S = st.S * 1e-4;
+  const Em = st.N * st.B * S * w, Phim = st.B * S;
+  const e = Em * Math.sin(st.theta), Phi = Phim * Math.cos(st.theta);
+  const Rt = st.R + st.r;
+  return { w, S, Em, Phim, e, Phi, i: e / Rt, u: e / Rt * st.R, Rt, T: 1 / st.n };
+}
+// 以计时起点为 0 的时间
+const tNow = () => {
+  const th = st.t0 === 'n' ? st.theta : st.theta - Math.PI / 2;
+  return (((th % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI * st.n);
+};
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let G = null;
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H, v = q();
+  view.begin();
+  const cx = W / 2, cy = H / 2 + 6, a = Math.min(H * 0.32, W * 0.2);
+  G = { cx, cy, a };
+  // 磁极
+  // 磁极：凹面是以转轴为圆心的圆弧
+  const gap = a + 46, h = a + 20, al = Math.asin(h / gap), face = Math.sqrt(gap * gap - h * h);
+  c.fillStyle = '#dc2626';
+  c.beginPath();
+  c.moveTo(cx - gap - 70, cy - h); c.lineTo(cx - face, cy - h);
+  c.arc(cx, cy, gap, al - Math.PI, Math.PI - al, true);
+  c.lineTo(cx - gap - 70, cy + h); c.closePath(); c.fill();
+  c.fillStyle = '#2563eb';
+  c.beginPath();
+  c.moveTo(cx + gap + 70, cy - h); c.lineTo(cx + face, cy - h);
+  c.arc(cx, cy, gap, -al, al, false);
+  c.lineTo(cx + gap + 70, cy + h); c.closePath(); c.fill();
+  text(c, 'N', cx - gap - 30, cy, '#fff', { bold: true, size: 26, halo: false });
+  text(c, 'S', cx + gap + 30, cy, '#fff', { bold: true, size: 26, halo: false });
+  // 磁感线
+  for (let y = cy - a; y <= cy + a + 1; y += a / 3) {
+    const xl = cx - Math.sqrt(Math.max(0, gap * gap - (y - cy) ** 2)), xr = 2 * cx - xl;
+    line(c, xl + 4, y, xr - 4, y, 'rgba(124,58,237,.35)', 1.2);
+    Lab.head(c, cx + a * 0.75, y, 1, 0, 6, 'rgba(124,58,237,.6)');
+  }
+  text(c, `B = ${fmt(st.B, 2)} T`, cx, cy - a - 34, '#6d28d9', { bold: true });
+
+  // 中性面
+  line(c, cx, cy - a - 14, cx, cy + a + 14, '#9ca3af', 1.2, [6, 5]);
+  text(c, '中性面', cx + 6, cy + a + 22, '#6b7280', { size: 12, align: 'left' });
+
+  // 线圈（端视图是一条线段），P1 为 ab 边，P2 为 cd 边
+  const th = st.theta;
+  const p1 = [cx - a * Math.sin(th), cy - a * Math.cos(th)], p2 = [cx + a * Math.sin(th), cy + a * Math.cos(th)];
+  line(c, p1[0], p1[1], p2[0], p2[1], '#374151', 5);
+  dot(c, cx, cy, 5, '#111827');
+  // 法线与夹角
+  // 法线（屏幕坐标）：θ = 0 时与 B 同向
+  const nx = Math.cos(th), ny = -Math.sin(th), nl = a * 0.6;
+  vec(c, cx, cy, cx + nx * nl, cy + ny * nl, '#0f766e', 2, 8);
+  text(c, 'n', cx + nx * (nl + 12), cy + ny * (nl + 12), '#0f766e', { bold: true });
+  const dth = ((th % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  c.beginPath(); c.arc(cx, cy, 26, 0, -dth, true); c.strokeStyle = '#0f766e'; c.lineWidth = 1.5; c.stroke();
+  text(c, `θ = ${fmt(dth * 180 / Math.PI, 0)}°`, cx + 34 * Math.cos(dth / 2), cy - 34 * Math.sin(dth / 2) - 4, '#0f766e', { bold: true, size: 12 });
+
+  // 两条边的速度和电流方向
+  const vlen = 40;
+  const sideMark = (p, sgn, name) => {
+    // 该边速度（逆时针转动）
+    const vx = -Math.cos(th) * sgn, vy = Math.sin(th) * sgn;   // 屏幕坐标
+    vec(c, p[0], p[1], p[0] + vx * vlen, p[1] + vy * vlen, '#16a34a', 2.5, 8);
+    // 垂直于 B 的分量（竖直方向）
+    if (Math.abs(vy) > 0.05) line(c, p[0], p[1], p[0], p[1] + vy * vlen, 'rgba(22,163,74,.45)', 2, [3, 3]);
+    // 电流：v×B 的 z 分量 ∝ −v_y(世界) = v_y(屏幕)
+    const z = vy;
+    const R0 = 13;
+    dot(c, p[0], p[1], R0, '#fff', '#b45309', 2);
+    if (Math.abs(z) > 0.05) {
+      if (z > 0) dot(c, p[0], p[1], 3.5 + 2 * Math.abs(z), '#b45309', null);
+      else { const s = 6 + 2 * Math.abs(z); line(c, p[0] - s, p[1] - s, p[0] + s, p[1] + s, '#b45309', 2.5); line(c, p[0] - s, p[1] + s, p[0] + s, p[1] - s, '#b45309', 2.5); }
+    }
+    text(c, name, p[0] - vx * 26 + 14, p[1] - vy * 26 - 6, '#374151', { bold: true, size: 13 });
+  };
+  sideMark(p1, 1, 'ab');
+  sideMark(p2, -1, 'cd');
+
+  text(c, `e = ${fmt(v.e, 2)} V`, 14, 18, '#dc2626', { bold: true, size: 15, align: 'left' });
+  text(c, `Φ = ${sci(v.Phi, 2)} Wb`, 14, 40, '#2563eb', { bold: true, size: 15, align: 'left' });
+  text(c, '⊙ 电流流出纸面　⊗ 流入纸面', W - 14, 18, '#b45309', { size: 12, align: 'right' });
+  text(c, '绿色虚线：速度垂直于 B 的分量（切割磁感线）', W - 14, 38, '#16a34a', { size: 12, align: 'right' });
+  if (Math.abs(Math.sin(th)) < 0.02) text(c, '中性面：e = 0，电流方向即将改变', cx, cy + a + 44, '#b91c1c', { bold: true });
+  if (Math.abs(Math.cos(th)) < 0.02) text(c, '线圈平面平行于 B：Φ = 0，e 最大', cx, cy + a + 44, '#15803d', { bold: true });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, v = q();
+  chartView.begin();
+  const T = v.T, eS = [], pS = [];
+  const off = st.t0 === 'n' ? 0 : Math.PI / 2;
+  for (let k = 0; k <= 400; k++) {
+    const t = 2 * T * k / 400, th = 2 * Math.PI * st.n * t + off;
+    eS.push([t / T, Math.sin(th)]);
+    pS.push([t / T, Math.cos(th)]);
+  }
+  const tn = tNow() / T;
+  const p = Lab.plot(c, { x: 0, y: 0, w: chartView.W, h: chartView.H }, {
+    xmin: 0, xmax: 2, ymin: -1.25, ymax: 1.25, xlabel: 't / T', ylabel: '按峰值归一：e/Em、Φ/Φm', legendX: 190, xticks: 8,
+    series: [{ pts: eS, color: '#dc2626', label: `e = ${fmt(v.Em, 2)}·${st.t0 === 'n' ? 'sin' : 'cos'}(${fmt(v.w, 2)}t) V` },
+             { pts: pS, color: '#2563eb', dash: [6, 4], label: `Φ = ${sci(v.Phim, 2)}·${st.t0 === 'n' ? 'cos' : '(−sin)'}(${fmt(v.w, 2)}t) Wb` }],
+    hlines: [{ y: 1 / Math.SQRT2, color: '#f59e0b', label: '有效值 Em/√2' }],
+    points: [{ x: tn, y: Math.sin(st.theta), color: '#dc2626' }, { x: tn, y: Math.cos(st.theta), color: '#2563eb' },
+             { x: tn + 1, y: Math.sin(st.theta), color: '#dc2626', r: 3 }, { x: tn + 1, y: Math.cos(st.theta), color: '#2563eb', r: 3 }],
+  });
+  Lab.line(c, p.X(tn), p.y0, p.X(tn), p.y1, 'rgba(17,24,39,.3)', 1);
+}
+
+// ---------- 读数 ----------
+function updatePanel() {
+  const v = q(), Ee = v.Em / Math.SQRT2, Ie = Ee / v.Rt, Ue = Ie * st.R;
+  $('now').innerHTML = `
+    <tr><td>转过角度 θ（从中性面算）</td><td>${fmt((((st.theta % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) * 180 / Math.PI, 0)}°</td></tr>
+    <tr><td>磁通量 Φ = BS·cosθ</td><td>${sci(v.Phi, 2)} Wb</td></tr>
+    <tr><td>磁通量变化率 ΔΦ/Δt = e/N</td><td>${sci(v.e / st.N, 2)} Wb/s</td></tr>
+    <tr><td>电动势 e = E<sub>m</sub>·sinθ</td><td>${fmt(v.e, 2)} V</td></tr>
+    <tr><td>电流 i = e/(R + r)</td><td>${fmt(v.i, 3)} A</td></tr>`;
+  const qQuarter = st.N * st.B * v.S / v.Rt;
+  $('tbl').innerHTML = `
+    <tr><td>角速度 ω = 2πn</td><td>${fmt(v.w, 2)} rad/s</td></tr>
+    <tr><td>周期 T / 频率 f</td><td>${fmt(v.T, 2)} s / ${fmt(st.n, 2)} Hz</td></tr>
+    <tr><td>峰值 E<sub>m</sub> = NBSω</td><td>${fmt(v.Em, 2)} V</td></tr>
+    <tr><td>有效值 E = E<sub>m</sub>/√2</td><td>${fmt(Ee, 2)} V</td></tr>
+    <tr><td>电流表读数 I = E/(R + r)</td><td>${fmt(Ie, 3)} A</td></tr>
+    <tr><td>电压表读数 U = IR</td><td>${fmt(Ue, 2)} V</td></tr>
+    <tr><td>R 的功率 P = I²R</td><td>${fmt(Ie * Ie * st.R, 3)} W</td></tr>
+    <tr><td>一个周期 R 上的热量 Q = I²RT</td><td>${fmt(Ie * Ie * st.R * v.T, 3)} J</td></tr>
+    <tr><td>从中性面转 90° 的平均电动势 2E<sub>m</sub>/π</td><td>${fmt(2 * v.Em / Math.PI, 2)} V</td></tr>
+    <tr><td>从中性面转 90° 通过的电荷量 NBS/(R + r)</td><td>${sci(qQuarter, 2)} C</td></tr>`;
+  $('chain').innerHTML = `
+    <div class="node"><span class="f">峰值：E<sub>m</sub> = NBSω</span><br>
+      <span class="v">${st.N} × ${fmt(st.B, 2)} T × ${fmt(v.S, 3)} m² × ${fmt(v.w, 2)} rad/s = ${fmt(v.Em, 2)} V</span></div>
+    <div class="link">↓ 从${st.t0 === 'n' ? '中性面' : '垂直中性面的位置'}开始计时</div>
+    <div class="node"><span class="f">瞬时值：e = E<sub>m</sub>${st.t0 === 'n' ? 'sin' : 'cos'}ωt</span><br>
+      <span class="n">${st.t0 === 'n' ? 't = 0 时线圈在中性面，e = 0' : 't = 0 时线圈平面平行于磁场，e = E<sub>m</sub>'}</span></div>
+    <div class="link">↓ 求热量、功率、电表读数</div>
+    <div class="node"><span class="f">有效值：E = E<sub>m</sub>/√2 = ${fmt(Ee, 2)} V</span><br><span class="n">让同一电阻在相同时间内产生相同热量的恒定电流值。</span></div>
+    <div class="link">↓ 求电荷量</div>
+    <div class="node"><span class="f">平均值：Ē = NΔΦ/Δt，q = ĪΔt = NΔΦ/(R + r)</span><br>
+      <span class="v">转 90°：ΔΦ = BS，q = ${st.N} × ${fmt(st.B, 2)} × ${fmt(v.S, 3)} ÷ ${fmt(v.Rt, 1)} = ${sci(qQuarter, 2)} C</span><br>
+      <span class="n">注意：求电荷量不能用有效值。</span></div>`;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+
+// ---------- 动画与交互 ----------
+const anim = Lab.loop(dt => { st.theta += 2 * Math.PI * st.n * dt; render(); });
+anim.start();
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; }
+  else { anim.start(); $('play').textContent = '⏸ 暂停'; }
+});
+function goTo(th) { anim.stop(); $('play').textContent = '▶ 继续'; st.theta = th; render(); }
+$('toN').addEventListener('click', () => goTo(0));
+$('toP').addEventListener('click', () => goTo(Math.PI / 2));
+
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    if (!G) return null;
+    const d = Math.hypot(px - G.cx, py - G.cy);
+    return Math.abs(d - G.a) < rad + 4 ? 'coil' : null;
+  },
+  move(h, px, py) {
+    anim.stop(); $('play').textContent = '▶ 继续';
+    // ab 边位于 (−a·sinθ, −a·cosθ)（屏幕坐标）；两个端点都可拖，取与当前角度更接近的解
+    const th = Math.atan2(-(px - G.cx), -(py - G.cy));
+    const snapped = Math.round(th / (Math.PI / 36)) * (Math.PI / 36);
+    const alt = snapped + Math.PI;
+    const dist = x => Math.abs(Math.atan2(Math.sin(x - st.theta), Math.cos(x - st.theta)));
+    st.theta = dist(snapped) <= dist(alt) ? snapped : alt;
+    render();
+  },
+});
+
+Lab.range('n', v => `${fmt(v, 2)} r/s`, v => { st.n = v; render(); });
+Lab.range('N', v => `${v} 匝`, v => { st.N = v; render(); });
+Lab.range('B', v => `${fmt(v, 2)} T`, v => { st.B = v; render(); });
+Lab.range('S', v => `${v} cm²`, v => { st.S = v; render(); });
+Lab.range('R', v => `${v} Ω`, v => { st.R = v; render(); });
+Lab.range('r', v => `${fmt(v, 1)} Ω`, v => { st.r = v; render(); });
+Lab.radios('t0', v => { st.t0 = v; render(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>电容器的动态分析 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+<style>
+  .tbl th { font-size: 12px; color: #6b7280; font-weight: normal; text-align: right; padding: 3px 4px; border-bottom: 1px solid #e5e7eb; }
+  .tbl th:first-child { text-align: left; }
+  .tbl td { text-align: right; font-variant-numeric: tabular-nums; }
+  .tbl td:first-child { text-align: left; }
+  .up { color: #b91c1c; font-weight: bold; } .down { color: #1d4ed8; font-weight: bold; } .same { color: #6b7280; }
+</style>
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>电容器的动态分析</b><span class="crumb">必修第三册 · 第十章 静电场中的能量</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">上下拖动上极板改变间距 d · 左右拖动改变正对面积 S（间距已放大显示）</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">先选电路状态，再拖动上极板或插入电介质，看右侧表格里各量怎么变。动态分析的关键：<b>先找不变量</b>——接着电源 U 不变，断开电源 Q 不变。</div>
+
+    <h2>电路状态</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="U" checked> 始终与电源相连（U 不变）</label>
+      <label class="chk"><input type="radio" name="mode" value="Q"> 充电后断开电源（Q 不变）</label>
+    </div>
+    <div class="row" id="U0Row">电源电压 <input type="range" id="U0" min="2" max="20" step="1" value="10"><span class="val" id="U0v"></span></div>
+
+    <h2>极板</h2>
+    <div class="row">间距 d <input type="range" id="d" min="1.5" max="8" step="0.1" value="4"><span class="val" id="dv"></span></div>
+    <div class="row">错开距离 <input type="range" id="off" min="0" max="80" step="1" value="0"><span class="val" id="offv"></span></div>
+    <div class="row">电介质 ε<sub>r</sub> <input type="range" id="er" min="1" max="6" step="0.5" value="1"><span class="val" id="erv"></span></div>
+    <div class="row"><button id="setRef" style="flex:1">把当前状态设为「初始」</button><button id="reset">全部复位</button></div>
+
+    <h2>初始 → 现在</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul>
+        <li>决定式 C = ε<sub>r</sub>S/(4πkd)：C 只由电容器本身决定，与 Q、U 无关。</li>
+        <li>接电源：U 不变。d 增大 → C 减小 → Q = CU 减小 → E = U/d 减小。</li>
+        <li>断开电源：Q 不变。只改变 d 时，E = 4πkQ/(ε<sub>r</sub>S) <b>不变</b>，油滴仍静止。</li>
+        <li>断开电源后减小正对面积 S：C 减小，U 增大，静电计张角变大，E 增大。</li>
+        <li>下极板接地时，P 点电势 φ<sub>P</sub> = E·h（h 为 P 到下极板的距离），判断 φ<sub>P</sub> 先看 E 变不变。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, sci, text, line, vec, dot } = Lab;
+const EPS0 = 8.854e-12, HP = 1;   // P 点到下极板 1 mm
+
+const st = { mode: 'U', U0: 10, d: 4, off: 0, er: 1, Qhold: 0 };
+let ref = null;
+
+function calc(s = st) {
+  const S = 100 - s.off;                       // cm²：板长 10 cm、宽 10 cm，错开 off mm
+  const C = s.er * EPS0 * S * 1e-4 / (s.d * 1e-3);
+  const U = s.mode === 'U' ? s.U0 : s.Qhold / C;
+  const Q = s.mode === 'U' ? C * s.U0 : s.Qhold;
+  const E = U / (s.d * 1e-3);
+  return { S, C, Q, U, E, phiP: E * HP * 1e-3 };
+}
+
+// ---------- 主画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let geo = null;
+
+function layout() {
+  const W = view.W, H = view.H;
+  const plateW = Math.min(W - 360, 440);
+  const kx = plateW / 100;                     // px / mm（水平）
+  const ky = Math.min(28, (H - 170) / 8);      // px / mm（竖直，放大显示）
+  const x0 = 130 + (W - 360 - plateW) / 2;
+  const yb = H / 2 + 3 * ky + 10;
+  return { W, H, plateW, kx, ky, x0, yb, yt: yb - st.d * ky, xt: x0 + st.off * kx };
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, g = geo = layout(), v = calc(), r0 = ref || v;
+  view.begin();
+  const { kx, ky, x0, yb, yt, xt, plateW } = g;
+  const ovL = xt, ovR = x0 + plateW;
+
+  if (st.er > 1) {
+    c.fillStyle = `rgba(250, 204, 21, ${0.12 + st.er * 0.04})`;
+    c.fillRect(x0, yt + 6, plateW, yb - yt - 12);
+    text(c, `电介质 εr = ${fmt(st.er, 1)}`, x0 + 60, yb - 16, '#a16207', { size: 12, bold: true });
+  }
+
+  // 电场线：只画在正对区域，疏密表示 E
+  const spacing = Math.max(9, Math.min(80, 9 * 2.5e4 / Math.max(v.E, 1)));
+  for (let x = ovL + spacing / 2; x < ovR; x += spacing) {
+    line(c, x, yt + 7, x, yb - 7, 'rgba(220,38,38,.55)', 1.2);
+    Lab.head(c, x, (yt + yb) / 2 + 4, 0, 1, 6, 'rgba(220,38,38,.75)');
+  }
+
+  // 极板与电荷
+  c.fillStyle = '#b91c1c';
+  c.fillRect(xt, yt - 6, plateW, 6);
+  c.fillStyle = '#1d4ed8';
+  c.fillRect(x0, yb, plateW, 6);
+  const n = Math.max(1, Math.min(40, Math.round(v.Q / 4.4e-10 * 10)));
+  for (let k = 0; k < n; k++) {
+    const x = ovL + (k + 0.5) / n * (ovR - ovL);
+    text(c, '+', x, yt - 15, '#b91c1c', { bold: true, size: 13 });
+    text(c, '−', x, yb + 16, '#1d4ed8', { bold: true, size: 13 });
+  }
+  // 拖动把手
+  dot(c, xt + plateW / 2, yt - 3, 7, '#fff', '#b91c1c', 2.5);
+  // 间距标注
+  const xd = Math.max(x0, xt) + 14;
+  vec(c, xd, (yt + yb) / 2, xd, yt + 1, '#374151', 1.2, 6);
+  vec(c, xd, (yt + yb) / 2, xd, yb - 1, '#374151', 1.2, 6);
+  text(c, `d = ${fmt(st.d, 1)} mm`, xd + 6, (yt + yb) / 2, '#374151', { size: 12, bold: true, align: 'left' });
+  if (st.off > 0) {
+    line(c, ovL, yt - 30, ovL, yb + 30, '#9ca3af', 1, [3, 3]);
+    line(c, ovR, yt - 30, ovR, yb + 30, '#9ca3af', 1, [3, 3]);
+  }
+  text(c, `正对面积 S = ${fmt(v.S, 0)} cm²`, (ovL + ovR) / 2, yb + 40, '#374151', { size: 12 });
+
+  // 接地与 P 点
+  const xg = x0 + 30;
+  line(c, xg, yb + 6, xg, yb + 58, '#374151', 1.5);
+  for (let i = 0; i < 3; i++) line(c, xg - 12 + i * 4, yb + 58 + i * 5, xg + 12 - i * 4, yb + 58 + i * 5, '#374151', 1.5);
+  const px = ovL + (ovR - ovL) * 0.62, py = yb - HP * ky;
+  // 油滴：带负电，初始状态下静止（qE₀ = mg）
+  const ratio = v.E / r0.E;
+  const Lg = 30;
+  vec(c, px, py, px, py + Lg, '#374151', 2.5, 8);
+  text(c, 'mg', px + 8, py + Lg + 2, '#374151', { size: 12, bold: true, align: 'left' });
+  vec(c, px, py, px, py - Lg * ratio, '#ea580c', 2.5, 8);
+  text(c, 'qE', px + 8, py - Lg * ratio - 2, '#ea580c', { size: 12, bold: true, align: 'left' });
+  dot(c, px, py, 7, '#6b7280');
+  text(c, '−', px, py, '#fff', { bold: true, size: 12, halo: false });
+  text(c, `P（油滴）φP = ${fmt(v.phiP, 2)} V`, px - 14, py - 16, '#111827', { size: 12, bold: true, align: 'right' });
+  const state = Math.abs(ratio - 1) < 0.005 ? ['油滴保持静止', '#15803d'] : ratio > 1 ? ['油滴向上加速', '#b91c1c'] : ['油滴向下加速', '#1d4ed8'];
+  text(c, state[0], px + 46, py - 2, state[1], { size: 13, bold: true, align: 'left' });
+
+  // 电源与开关
+  const xl = x0 - 90, ym = (yt + yb) / 2;
+  line(c, xt + 20, yt - 6, xt + 20, yt - 46, '#374151', 1.5);
+  line(c, xt + 20, yt - 46, xl, yt - 46, '#374151', 1.5);
+  line(c, x0 + 20, yb + 6, x0 + 20, yb + 22, '#374151', 1.5);
+  line(c, x0 + 20, yb + 22, xl, yb + 22, '#374151', 1.5);
+  const closed = st.mode === 'U';
+  line(c, xl, yb + 22, xl, ym + 14, '#374151', 1.5);
+  line(c, xl - 12, ym + 14, xl + 12, ym + 14, '#374151', 2.5);
+  line(c, xl - 6, ym + 6, xl + 6, ym + 6, '#374151', 4);
+  text(c, `U₀ = ${st.U0} V`, xl + 16, ym + 10, '#374151', { size: 12, align: 'left' });
+  line(c, xl, ym + 6, xl, ym - 20, '#374151', 1.5);
+  dot(c, xl, ym - 20, 3, '#374151', null);
+  const ang = closed ? 0 : -0.6;
+  line(c, xl, ym - 20, xl + Math.sin(ang) * 30, ym - 20 - Math.cos(ang) * 30, '#374151', 2);
+  dot(c, xl, ym - 50, 3, '#374151', null);
+  line(c, xl, ym - 50, xl, yt - 46, '#374151', 1.5);
+  text(c, closed ? 'S 闭合' : 'S 断开', xl + 10, ym - 36, closed ? '#15803d' : '#b91c1c', { size: 12, bold: true, align: 'left' });
+
+  // 静电计：张角反映 U
+  const ex = ovR + 120, ey = ym + 10, R = 52;
+  line(c, x0 + plateW - 10, yt - 6, x0 + plateW - 10, yt - 30, '#9ca3af', 1.2);
+  line(c, x0 + plateW - 10, yt - 30, ex, yt - 30, '#9ca3af', 1.2);
+  line(c, ex, yt - 30, ex, ey - R, '#9ca3af', 1.2);
+  line(c, x0 + plateW - 10, yb + 6, x0 + plateW - 10, yb + 22, '#9ca3af', 1.2);
+  line(c, x0 + plateW - 10, yb + 22, ex, yb + 22, '#9ca3af', 1.2);
+  c.beginPath(); c.arc(ex, ey, R, 0, Math.PI * 2); c.strokeStyle = '#6b7280'; c.lineWidth = 2; c.stroke();
+  line(c, ex, ey - R, ex, ey + 18, '#374151', 3);
+  const th = Math.min(1.25, v.U / 40);
+  line(c, ex, ey - 10, ex + Math.sin(th) * 40, ey - 10 + Math.cos(th) * 40, '#ea580c', 3);
+  text(c, '静电计', ex, ey + R + 14, '#374151', { size: 12, bold: true });
+  text(c, `U = ${fmt(v.U, 2)} V`, ex, ey + R + 32, '#ea580c', { size: 13, bold: true });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx;
+  chartView.begin();
+  const half = chartView.W / 2;
+  const ds = [], Cs = [], Es = [];
+  for (let d = 1.5; d <= 8.001; d += 0.05) {
+    const v = calc({ ...st, d });
+    Cs.push([d, v.C * 1e12]);
+    Es.push([d, v.E / 1000]);
+    ds.push(d);
+  }
+  const v = calc(), r0 = ref || v;
+  const cmax = Math.max(...Cs.map(p => p[1]), r0.C * 1e12) * 1.1;
+  Lab.plot(c, { x: 0, y: 0, w: half, h: chartView.H }, {
+    xmin: 1.5, xmax: 8, ymin: 0, ymax: cmax, xlabel: 'd / mm', ylabel: '电容 C / pF', title: 'C 与 d 成反比',
+    series: [{ pts: Cs, color: '#2563eb' }],
+    points: [{ x: st.d, y: v.C * 1e12, color: '#2563eb', label: fmt(v.C * 1e12, 1) }],
+  });
+  const emax = Math.max(...Es.map(p => p[1]), r0.E / 1000) * 1.15;
+  Lab.plot(c, { x: half, y: 0, w: half, h: chartView.H }, {
+    xmin: 1.5, xmax: 8, ymin: 0, ymax: emax, xlabel: 'd / mm', ylabel: '场强 E / (kV/m)',
+    title: st.mode === 'U' ? 'U 不变：E = U/d' : 'Q 不变：E 与 d 无关',
+    series: [{ pts: Es, color: '#dc2626' }],
+    hlines: [{ y: r0.E / 1000, color: '#9ca3af', label: '初始' }],
+    points: [{ x: st.d, y: v.E / 1000, color: '#dc2626', label: fmt(v.E / 1000, 2) }],
+  });
+}
+
+// ---------- 表格与分析 ----------
+function trend(a, b) {
+  const r = (b - a) / Math.abs(a || 1);
+  if (Math.abs(r) < 0.005) return '<span class="same">不变</span>';
+  return r > 0 ? '<span class="up">↑ 变大</span>' : '<span class="down">↓ 变小</span>';
+}
+function updatePanel() {
+  const v = calc(), r0 = ref || v;
+  const rows = [
+    ['电容 C', r0.C * 1e12, v.C * 1e12, 'pF', 1],
+    ['电荷量 Q', r0.Q * 1e9, v.Q * 1e9, 'nC', 3],
+    ['电压 U', r0.U, v.U, 'V', 2],
+    ['场强 E', r0.E / 1000, v.E / 1000, 'kV/m', 2],
+    ['P 点电势 φ<sub>P</sub>', r0.phiP, v.phiP, 'V', 2],
+    ['油滴电势能 E<sub>p</sub>（取 q = −1 nC）', -r0.phiP, -v.phiP, 'nJ', 2],
+  ];
+  $('tbl').innerHTML = '<tr><th>物理量</th><th>初始</th><th>现在</th><th>变化</th></tr>' + rows.map(([n, a, b, u, d]) =>
+    `<tr><td>${n}</td><td>${fmt(a, d)}</td><td>${fmt(b, d)} ${u}</td><td>${trend(a, b)}</td></tr>`).join('');
+
+  const keep = st.mode === 'U'
+    ? `<span class="f">不变量：U = ${st.U0} V</span>（电容器始终接在电源两端）`
+    : `<span class="f">不变量：Q = ${fmt(v.Q * 1e9, 3)} nC</span>（断开后电荷无处可去）`;
+  const third = st.mode === 'U'
+    ? `<span class="f">Q = CU，E = U/d</span><br><span class="v">Q = ${fmt(v.C * 1e12, 1)} pF × ${st.U0} V = ${fmt(v.Q * 1e9, 3)} nC</span><br>
+       <span class="v">E = ${st.U0} V ÷ ${fmt(st.d, 1)} mm = ${fmt(v.E / 1000, 2)} kV/m</span>`
+    : `<span class="f">U = Q/C，E = U/d = 4πkQ/(ε<sub>r</sub>S)</span><br><span class="v">U = ${fmt(v.Q * 1e9, 3)} nC ÷ ${fmt(v.C * 1e12, 1)} pF = ${fmt(v.U, 2)} V</span><br>
+       <span class="n">E 的表达式里没有 d：只改变间距时场强不变。</span>`;
+  $('chain').innerHTML = `
+    <div class="node">${keep}</div>
+    <div class="link">↓ 由决定式求 C</div>
+    <div class="node"><span class="f">C = ε<sub>r</sub>S/(4πkd) = ε<sub>r</sub>ε₀S/d</span><br>
+      <span class="v">${fmt(st.er, 1)} × 8.85×10⁻¹² × ${fmt(v.S, 0)}×10⁻⁴ m² ÷ ${fmt(st.d, 1)}×10⁻³ m = ${fmt(v.C * 1e12, 1)} pF</span></div>
+    <div class="link">↓ 结合不变量</div>
+    <div class="node">${third}</div>
+    <div class="link">↓ 下极板接地</div>
+    <div class="node"><span class="f">φ<sub>P</sub> = E·h</span><br><span class="v">${fmt(v.E / 1000, 2)} kV/m × ${HP} mm = ${fmt(v.phiP, 2)} V</span></div>`;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+
+// ---------- 交互 ----------
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    const g = geo;
+    if (!g) return null;
+    const inX = px > g.xt - 6 && px < g.xt + g.plateW + 6;
+    return inX && Math.abs(py - (g.yt - 3)) < Math.max(rad, 12) ? { sx: px, so: st.off } : null;
+  },
+  move(h, px, py) {
+    const g = geo;
+    st.d = Math.round(Math.max(1.5, Math.min(8, (g.yb - py) / g.ky)) * 10) / 10;
+    st.off = Math.round(Math.max(0, Math.min(80, h.so + (px - h.sx) / g.kx)));
+    Lab.setRange('d', st.d); Lab.setRange('off', st.off);
+    render();
+  },
+});
+
+function setRef() { ref = calc(); render(); }
+Lab.radios('mode', m => {
+  if (m === 'Q') st.Qhold = calc().Q;
+  st.mode = m;
+  $('U0Row').style.opacity = m === 'U' ? 1 : 0.4;
+  $('U0').disabled = m !== 'U';
+  setRef();
+});
+Lab.range('U0', v => `${v} V`, v => { st.U0 = v; render(); });
+Lab.range('d', v => `${fmt(v, 1)} mm`, v => { st.d = v; render(); });
+Lab.range('off', v => `${v} mm`, v => { st.off = v; render(); });
+Lab.range('er', v => (v === 1 ? '1（空气）' : fmt(v, 1)), v => { st.er = v; render(); });
+$('setRef').addEventListener('click', setRef);
+$('reset').addEventListener('click', () => {
+  Object.assign(st, { mode: 'U', U0: 10, d: 4, off: 0, er: 1 });
+  for (const k of ['U0', 'd', 'off', 'er']) Lab.setRange(k, st[k]);
+  Lab.setRadio('mode', 'U');
+  $('U0Row').style.opacity = 1; $('U0').disabled = false;
+  setRef();
+});
+
+setRef();
+</script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>导体棒切割磁感线 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>导体棒切割磁感线</b><span class="crumb">选择性必修第二册 · 第二章 电磁感应</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">「用手拖动」模式下左右拖动导体棒 · 其他模式点「开始」</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">导体棒切割磁感线产生感应电动势 E = BLv，感应电流受到的安培力总是<b>阻碍</b>导体棒的运动。选一种运动方式，点「开始」。</div>
+
+    <h2>运动方式</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="force" checked> 恒力 F 拉动</label>
+      <label class="chk"><input type="radio" name="mode" value="coast"> 给初速度后滑行</label>
+      <label class="chk"><input type="radio" name="mode" value="hand"> 用手拖动</label>
+    </div>
+    <div class="row" id="FRow">拉力 F <input type="range" id="F" min="0.1" max="2" step="0.05" value="0.5"><span class="val" id="Fv"></span></div>
+    <div class="row" id="v0Row">初速度 v₀ <input type="range" id="v0" min="0" max="10" step="0.5" value="0"><span class="val" id="v0v"></span></div>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="reset">复位</button></div>
+
+    <h2>装置参数</h2>
+    <div class="row">磁感应强度 B <input type="range" id="B" min="0.2" max="2" step="0.1" value="1"><span class="val" id="Bv"></span></div>
+    <div class="row">方向
+      <label class="chk"><input type="radio" name="bdir" value="-1" checked> × 向里</label>
+      <label class="chk"><input type="radio" name="bdir" value="1"> · 向外</label>
+    </div>
+    <div class="row">导轨间距 L <input type="range" id="L" min="0.2" max="1" step="0.05" value="0.5"><span class="val" id="Lv"></span></div>
+    <div class="row">棒的质量 m <input type="range" id="m" min="0.05" max="1" step="0.05" value="0.1"><span class="val" id="mv"></span></div>
+    <div class="row">电阻 R <input type="range" id="R" min="0.5" max="5" step="0.1" value="1.5"><span class="val" id="Rv"></span></div>
+    <div class="row">棒的电阻 r <input type="range" id="r" min="0" max="2" step="0.1" value="0.5"><span class="val" id="rv"></span></div>
+
+    <h2>测量结果</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul>
+        <li>右手定则判断感应电流方向；感应电流在磁场中受安培力，方向与运动方向相反（来拒去留）。</li>
+        <li>安培力 F<sub>A</sub> = B²L²v/(R + r) 与速度成正比，所以恒力拉动时做<b>加速度减小的加速运动</b>，最终匀速。</li>
+        <li>收尾速度 v<sub>m</sub> = F(R + r)/(B²L²)，此时 F = F<sub>A</sub>。</li>
+        <li>只给初速度时做加速度减小的减速运动，动能全部转化为焦耳热。</li>
+        <li>通过回路的电荷量 q = ΔΦ/(R + r) = BLx/(R + r)，只与扫过的面积有关，与快慢无关。</li>
+        <li>能量守恒：W<sub>F</sub> = ΔE<sub>k</sub> + Q，Q 按电阻分配：Q<sub>R</sub> : Q<sub>r</sub> = R : r。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, sci, text, line, vec, dot } = Lab;
+const st = {
+  mode: 'force', F: 0.5, v0: 0, B: 1, bdir: -1, L: 0.5, m: 0.1, R: 1.5, r: 0.5,
+  x: 1, v: 0, t: 0, Q: 0, WF: 0, q: 0, Ek0: 0, hist: [],
+};
+const X0 = 1;   // 导体棒初始位置（距电阻 1 m）
+
+const k = () => st.B * st.B * st.L * st.L / (st.R + st.r);
+function quantities() {
+  const E = st.B * st.L * st.v, I = E / (st.R + st.r), FA = k() * st.v;
+  const Fext = st.mode === 'force' ? st.F : 0;
+  const a = st.mode === 'hand' ? NaN : (Fext - FA) / st.m;
+  return { E, I, FA, a, Fext, Phi: st.B * st.L * st.x, Ek: 0.5 * st.m * st.v * st.v };
+}
+
+function resetSim() {
+  anim.stop();
+  st.x = X0; st.v = st.mode === 'hand' ? 0 : st.v0; st.t = 0; st.Q = 0; st.WF = 0; st.q = 0;
+  st.Ek0 = 0.5 * st.m * st.v * st.v;
+  st.hist = [[0, st.v]];
+  camX = 0;
+  $('play').textContent = '▶ 开始';
+  render();
+}
+
+function step(dt) {
+  const n = 20, h = dt / n, kk = k();
+  for (let i = 0; i < n; i++) {
+    const Fext = st.mode === 'force' ? st.F : 0;
+    const a = (Fext - kk * st.v) / st.m;
+    const v1 = st.v + a * h;
+    const vm = (st.v + v1) / 2;
+    st.x += vm * h;
+    st.Q += kk * vm * vm * h;
+    st.WF += Fext * vm * h;
+    st.q += st.B * st.L * vm * h / (st.R + st.r);
+    st.v = v1;
+    st.t += h;
+  }
+  st.hist.push([st.t, st.v]);
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let camX = 0, G = null;
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H, q = quantities();
+  view.begin();
+  const ppm = Math.min(150, W / 6.5);            // px / m
+  const railGap = Math.max(90, Math.min(H * 0.55, st.L * 260 + 40));
+  const yTop = H / 2 - railGap / 2 - 10, yBot = H / 2 + railGap / 2 - 10;
+  const xr = x => 70 + (x - camX) * ppm;
+  // 让导体棒保持在画面内
+  if (xr(st.x) > W * 0.7) camX = st.x - (W * 0.7 - 70) / ppm;
+  if (xr(st.x) < W * 0.3 && camX > 0) camX = Math.max(0, st.x - (W * 0.3 - 70) / ppm);
+  const xRes = xr(0), xRod = xr(st.x);
+  G = { xRod, yTop, yBot, ppm, xr };
+
+  // 磁场
+  c.fillStyle = 'rgba(124,58,237,.05)';
+  c.fillRect(0, yTop - 40, W, yBot - yTop + 80);
+  const into = st.bdir < 0, g = 40;
+  for (let x = ((-camX * ppm) % g + g) % g + 10; x < W; x += g) {
+    for (let y = yTop - 20; y < yBot + 40; y += g) {
+      if (into) { line(c, x - 4, y - 4, x + 4, y + 4, 'rgba(124,58,237,.4)', 1.3); line(c, x - 4, y + 4, x + 4, y - 4, 'rgba(124,58,237,.4)', 1.3); }
+      else dot(c, x, y, 2.5, 'rgba(124,58,237,.45)', null);
+    }
+  }
+  text(c, `B = ${fmt(st.B, 1)} T ${into ? '× 垂直纸面向里' : '· 垂直纸面向外'}`, 12, 16, '#6d28d9', { bold: true, align: 'left' });
+
+  // 回路面积（磁通量）
+  c.fillStyle = 'rgba(250,204,21,.22)';
+  c.fillRect(Math.max(xRes, 0), yTop, xRod - Math.max(xRes, 0), yBot - yTop);
+  text(c, `Φ = BLx = ${fmt(q.Phi, 2)} Wb`, Math.max(xRes + 10, 10) + (xRod - Math.max(xRes, 0)) / 2, yTop + 18, '#a16207', { size: 12, bold: true });
+
+  // 导轨
+  line(c, Math.max(0, xRes), yTop, W, yTop, '#4b5563', 4);
+  line(c, Math.max(0, xRes), yBot, W, yBot, '#4b5563', 4);
+  // 电阻 R
+  if (xRes > -30) {
+    line(c, xRes, yTop, xRes, yBot, '#4b5563', 2.5);
+    c.fillStyle = '#fef3c7'; c.fillRect(xRes - 9, (yTop + yBot) / 2 - 26, 18, 52);
+    c.strokeStyle = '#4b5563'; c.lineWidth = 1.5; c.strokeRect(xRes - 9, (yTop + yBot) / 2 - 26, 18, 52);
+    text(c, `R = ${fmt(st.R, 1)} Ω`, xRes + 16, (yTop + yBot) / 2, '#92400e', { size: 12, bold: true, align: 'left' });
+  }
+  // 位移刻度
+  for (let m = Math.ceil(camX); m <= camX + W / ppm; m++) {
+    line(c, xr(m), yBot + 6, xr(m), yBot + 12, '#9ca3af', 1);
+    text(c, `${m} m`, xr(m), yBot + 22, '#9ca3af', { size: 11, halo: false });
+  }
+
+  // 感应电流方向：沿回路画箭头（导体棒中电流方向由 v×B 决定）
+  if (Math.abs(q.I) > 1e-4) {
+    const upInRod = (st.v > 0) === into;   // 向右运动、B 向里 → 棒中电流向上
+    const col = '#f59e0b', s = 9;
+    const ym = (yTop + yBot) / 2;
+    vec(c, xRod + 14, upInRod ? ym + 22 : ym - 22, xRod + 14, upInRod ? ym - 22 : ym + 22, col, 2.5, s);
+    const xm = (Math.max(xRes, 0) + xRod) / 2;
+    if (upInRod) {
+      vec(c, xm + 30, yTop - 12, xm - 30, yTop - 12, col, 2.5, s);
+      vec(c, xm - 30, yBot + 36, xm + 30, yBot + 36, col, 2.5, s);
+    } else {
+      vec(c, xm - 30, yTop - 12, xm + 30, yTop - 12, col, 2.5, s);
+      vec(c, xm + 30, yBot + 36, xm - 30, yBot + 36, col, 2.5, s);
+    }
+    text(c, `I = ${fmt(q.I, 3)} A`, xRod + 22, ym + 40, '#b45309', { bold: true, size: 13, align: 'left' });
+  }
+
+  // 导体棒
+  c.fillStyle = '#374151';
+  c.fillRect(xRod - 5, yTop - 14, 10, yBot - yTop + 28);
+  dot(c, xRod, yTop - 22, 7, '#fff', '#374151', 2.5);
+  text(c, `L = ${fmt(st.L, 2)} m`, xRod - 12, yTop - 26, '#374151', { size: 12, align: 'right' });
+
+  // 力与速度
+  const ym = (yTop + yBot) / 2 - 30;
+  if (Math.abs(st.v) > 1e-3) {
+    const lv = Math.min(110, 14 + Math.abs(st.v) * 14) * Math.sign(st.v);
+    vec(c, xRod, yBot + 50, xRod + lv, yBot + 50, '#16a34a', 3, 9);
+    text(c, `v = ${fmt(st.v, 2)} m/s`, xRod + lv + Math.sign(lv) * 8, yBot + 50, '#16a34a', { bold: true, align: lv > 0 ? 'left' : 'right' });
+  }
+  const fs = 60;
+  if (q.FA > 1e-4) {
+    const l = Math.min(130, q.FA * fs + 10) * -Math.sign(st.v);
+    vec(c, xRod, ym, xRod + l, ym, '#2563eb', 3, 9);
+    text(c, `FA = ${fmt(q.FA, 3)} N`, xRod + l - Math.sign(st.v) * 6, ym - 14, '#2563eb', { bold: true, size: 12, align: st.v > 0 ? 'right' : 'left' });
+  }
+  if (q.Fext > 0) {
+    const l = Math.min(130, q.Fext * fs + 10);
+    vec(c, xRod, ym + 26, xRod + l, ym + 26, '#dc2626', 3, 9);
+    text(c, `F = ${fmt(q.Fext, 2)} N`, xRod + l + 6, ym + 26, '#dc2626', { bold: true, size: 12, align: 'left' });
+  }
+  text(c, `t = ${fmt(st.t, 2)} s`, W - 12, 16, '#111827', { bold: true, align: 'right' });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W;
+  chartView.begin();
+  const vm = st.mode === 'force' ? st.F / k() : null;
+  const tmax = Math.max(4, st.t * 1.1);
+  const vmaxH = Math.max(1, ...st.hist.map(p => Math.abs(p[1])), vm && vm < 40 ? vm : 0) * 1.15;
+  const w1 = W * 0.62;
+  Lab.plot(c, { x: 0, y: 0, w: w1, h: chartView.H }, {
+    xmin: 0, xmax: tmax, ymin: Math.min(0, ...st.hist.map(p => p[1])) * 1.1, ymax: vmaxH, xlabel: 't / s', ylabel: 'v / (m/s)',
+    series: [{ pts: st.hist, color: '#16a34a' }],
+    hlines: vm && vm < vmaxH ? [{ y: vm, color: '#dc2626', label: `收尾速度 vm = ${fmt(vm, 2)} m/s` }] : [],
+    title: st.mode === 'force' ? '加速度逐渐减小的加速运动' : st.mode === 'coast' ? '加速度逐渐减小的减速运动' : '',
+  });
+  // 能量账
+  const x0 = w1 + 30, x1 = W - 16, y0 = chartView.H - 34, y1 = 34;
+  const Ek = 0.5 * st.m * st.v * st.v;
+  const bars = st.mode === 'force'
+    ? [['拉力做功 WF', st.WF, '#dc2626'], ['动能 Ek', Ek, '#16a34a'], ['焦耳热 Q', st.Q, '#f59e0b']]
+    : st.mode === 'coast'
+      ? [['初动能 Ek0', st.Ek0, '#6b7280'], ['动能 Ek', Ek, '#16a34a'], ['焦耳热 Q', st.Q, '#f59e0b']]
+      : [['焦耳热 Q', st.Q, '#f59e0b']];
+  const top = Math.max(1e-3, ...bars.map(b => b[1])) * 1.15;
+  text(c, st.mode === 'force' ? '能量：WF = Ek + Q' : st.mode === 'coast' ? '能量：Ek0 = Ek + Q' : '能量：手做的功 → 焦耳热', x0, 12, '#374151', { size: 12, bold: true, align: 'left' });
+  line(c, x0, y0, x1, y0, '#9ca3af', 1);
+  const bw = (x1 - x0) / bars.length;
+  bars.forEach(([name, val, col], i) => {
+    const h = val / top * (y0 - y1);
+    c.fillStyle = col;
+    c.fillRect(x0 + i * bw + bw * 0.2, y0 - h, bw * 0.6, h);
+    text(c, `${fmt(val, 3)} J`, x0 + i * bw + bw / 2, y0 - h - 10, col, { size: 12, bold: true });
+    text(c, name, x0 + i * bw + bw / 2, y0 + 14, '#374151', { size: 12 });
+  });
+}
+
+// ---------- 读数 ----------
+function updatePanel() {
+  const q = quantities(), vm = st.F / k();
+  const QR = st.Q * st.R / (st.R + st.r), Qr = st.Q * st.r / (st.R + st.r);
+  $('tbl').innerHTML = `
+    <tr><td>速度 v</td><td>${fmt(st.v, 3)} m/s</td></tr>
+    <tr><td>感应电动势 E = BLv</td><td>${fmt(q.E, 3)} V</td></tr>
+    <tr><td>感应电流 I = E/(R+r)</td><td>${fmt(q.I, 3)} A</td></tr>
+    <tr><td>安培力 F<sub>A</sub> = BIL</td><td>${fmt(q.FA, 3)} N</td></tr>
+    <tr><td>加速度 a</td><td>${Number.isFinite(q.a) ? fmt(q.a, 3) + ' m/s²' : '—'}</td></tr>
+    <tr><td>位移 x − x₀</td><td>${fmt(st.x - X0, 3)} m</td></tr>
+    <tr><td>通过的电荷量 q = BL(x − x₀)/(R+r)</td><td>${fmt(st.q, 3)} C</td></tr>
+    <tr><td>焦耳热 Q（R 上 / r 上）</td><td>${fmt(st.Q, 3)} J（${fmt(QR, 3)} / ${fmt(Qr, 3)}）</td></tr>`;
+  const sumBL = `${fmt(st.B, 1)} × ${fmt(st.L, 2)}`;
+  let html = `
+    <div class="node"><span class="f">① 右手定则判方向，E = BLv 求大小</span><br>
+      <span class="v">E = ${sumBL} × ${fmt(st.v, 2)} = ${fmt(q.E, 3)} V</span><br>
+      <span class="n">导体棒相当于电源，棒中电流从低电势端流向高电势端。</span></div>
+    <div class="link">↓ 闭合电路欧姆定律</div>
+    <div class="node"><span class="f">② I = E/(R + r)</span><br><span class="v">${fmt(q.E, 3)} ÷ ${fmt(st.R + st.r, 1)} = ${fmt(q.I, 3)} A</span></div>
+    <div class="link">↓ 电流在磁场中受力</div>
+    <div class="node"><span class="f">③ F<sub>A</sub> = BIL = B²L²v/(R + r)，阻碍运动</span><br><span class="v">${sumBL} × ${fmt(q.I, 3)} = ${fmt(q.FA, 3)} N</span></div>`;
+  if (st.mode === 'force') {
+    html += `<div class="link">↓ 牛顿第二定律</div>
+    <div class="node"><span class="f">④ a = (F − F<sub>A</sub>)/m，v 增大 → F<sub>A</sub> 增大 → a 减小</span><br>
+      <span class="v">a = (${fmt(st.F, 2)} − ${fmt(q.FA, 3)}) ÷ ${fmt(st.m, 2)} = ${fmt(q.a, 3)} m/s²</span><br>
+      当 F = F<sub>A</sub> 时匀速：<b>v<sub>m</sub> = F(R + r)/(B²L²) = ${fmt(vm, 2)} m/s</b></div>`;
+  } else if (st.mode === 'coast') {
+    html += `<div class="link">↓ 只受安培力</div>
+    <div class="node"><span class="f">④ a = −F<sub>A</sub>/m，速度越小减速越慢</span><br>
+      <span class="v">a = −${fmt(q.FA, 3)} ÷ ${fmt(st.m, 2)} = ${fmt(q.a, 3)} m/s²</span><br>
+      <span class="n">理论上停下要无限长时间，总位移有限：x = mv₀(R + r)/(B²L²) = ${fmt(st.m * st.v0 / k(), 2)} m。</span></div>`;
+  } else {
+    html += `<div class="link">↓ 拖得越快</div><div class="node">电流越大，阻力越大，手要做更多功，全部变成焦耳热。</div>`;
+  }
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+
+// ---------- 动画与交互 ----------
+const anim = Lab.loop(dt => {
+  step(dt);
+  render();
+  if (st.mode === 'coast' && Math.abs(st.v) < 1e-3) { $('play').textContent = '▶ 开始'; return false; }
+  if (st.t > 60) return false;
+});
+$('play').addEventListener('click', () => {
+  if (st.mode === 'hand') return;
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  $('play').textContent = '⏸ 暂停';
+  anim.start();
+});
+$('reset').addEventListener('click', resetSim);
+
+// 用手拖动：速度取最近一段时间的平均
+let handLast = null;
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    if (st.mode !== 'hand' || !G) return null;
+    return Math.abs(px - G.xRod) < rad + 4 && py > G.yTop - 32 && py < G.yBot + 20 ? { off: px - G.xRod } : null;
+  },
+  move(h, px) {
+    const now = performance.now() / 1000;
+    const nx = Math.max(0.2, (px - h.off - 70) / G.ppm + camX);
+    if (handLast) {
+      const dt = Math.max(1e-3, now - handLast.t);
+      const vNew = (nx - st.x) / dt;
+      st.v = 0.6 * st.v + 0.4 * vNew;
+      const kk = k();
+      st.Q += kk * st.v * st.v * dt;
+      st.q += st.B * st.L * (nx - st.x) / (st.R + st.r);
+      st.t += dt;
+      st.hist.push([st.t, st.v]);
+    }
+    st.x = nx;
+    handLast = { t: now };
+    render();
+  },
+  end() { handLast = null; st.v = 0; st.hist.push([st.t, 0]); render(); },
+});
+
+function showRows() {
+  $('FRow').style.display = st.mode === 'force' ? '' : 'none';
+  $('v0Row').style.display = st.mode === 'hand' ? 'none' : '';
+  $('play').disabled = st.mode === 'hand';
+}
+Lab.radios('mode', m => { st.mode = m; if (m === 'coast' && st.v0 === 0) { st.v0 = 6; Lab.setRange('v0', 6); } showRows(); resetSim(); });
+Lab.radios('bdir', v => { st.bdir = +v; render(); });
+Lab.range('F', v => `${fmt(v, 2)} N`, v => { st.F = v; render(); });
+Lab.range('v0', v => `${fmt(v, 1)} m/s`, v => { st.v0 = v; resetSim(); });
+Lab.range('B', v => `${fmt(v, 1)} T`, v => { st.B = v; render(); });
+Lab.range('L', v => `${fmt(v, 2)} m`, v => { st.L = v; render(); });
+Lab.range('m', v => `${fmt(v, 2)} kg`, v => { st.m = v; render(); });
+Lab.range('R', v => `${fmt(v, 1)} Ω`, v => { st.R = v; render(); });
+Lab.range('r', v => `${fmt(v, 1)} Ω`, v => { st.r = v; render(); });
+
+showRows();
+resetSim();
+</script>
+</body>
+</html>

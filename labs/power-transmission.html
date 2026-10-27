@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>变压器与远距离输电 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>变压器与远距离输电</b><span class="crumb">选择性必修第二册 · 第三章 交变电流</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">变压器均为理想变压器；灯的亮度表示用户得到的电压高低</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">输电线有电阻，电流越大损失越多：P<sub>损</sub> = I²R<sub>线</sub>。<b>把电压升高 k 倍，输电电流降为 1/k，损失降为 1/k²</b>。把升压比调到 1 试试（不升压直接输电）。</div>
+
+    <h2>发电厂与升压变压器</h2>
+    <div class="row">发电机输出电压 U₁ <input type="range" id="U1" min="250" max="1000" step="50" value="500"><span class="val" id="U1v"></span></div>
+    <div class="row">升压比 n₂ : n₁ <input type="range" id="k1" min="1" max="40" step="1" value="20"><span class="val" id="k1v"></span></div>
+
+    <h2>输电线</h2>
+    <div class="row">输电线总电阻 R<sub>线</sub> <input type="range" id="Rl" min="0" max="30" step="0.5" value="10"><span class="val" id="Rlv"></span></div>
+
+    <h2>降压变压器与用户</h2>
+    <label class="chk"><input type="checkbox" id="auto" checked> 自动调节降压比，使用户电压为 220 V</label>
+    <div class="row" id="k2Row">降压比 n₃ : n₄ <input type="range" id="k2" min="1" max="60" step="0.5" value="45"><span class="val" id="k2v"></span></div>
+    <div class="row">用户数（每户 220 V、2.2 kW 的电器）<input type="range" id="N" min="1" max="50" step="1" value="20"><span class="val" id="Nv"></span></div>
+
+    <h2>测量结果</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>调一调，验证这些结论</summary>
+      <ul>
+        <li>理想变压器：U₁/U₂ = n₁/n₂，I₁/I₂ = n₂/n₁，P<sub>入</sub> = P<sub>出</sub>；输入功率由输出功率决定。</li>
+        <li>输电线上：U₂ = ΔU + U₃，ΔU = I<sub>线</sub>R<sub>线</sub>，P<sub>损</sub> = I<sub>线</sub>²R<sub>线</sub> = (P/U₂)²R<sub>线</sub>。</li>
+        <li>注意 P<sub>损</sub> ≠ U₂²/R<sub>线</sub>：U₂ 不是加在输电线两端的电压。</li>
+        <li>用户增多（并联电器增多）→ 总电阻减小 → 输电电流增大 → 线上损失的电压增大 → 用户电压降低。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, sci, text, line, vec, dot } = Lab;
+const st = { U1: 500, k1: 20, Rl: 10, k2: 45, N: 20, auto: true };
+const R_HOUSE = 22;   // 220 V、2.2 kW
+
+// 用户电压恰为 220 V 时：U₂ = (10N/k₂)·R线 + 220·k₂，取较大的根（输电电流较小）
+function autoK2(s) {
+  const U2 = s.U1 * s.k1, disc = U2 * U2 - 4 * 220 * 10 * s.N * s.Rl;
+  return disc < 0 ? null : (U2 + Math.sqrt(disc)) / 440;
+}
+
+function calc(s = st) {
+  if (s.auto) {
+    const k = autoK2(s);
+    // 送不到 220 V 时，取让用户功率最大的降压比（折算电阻等于线路电阻）
+    if (k === null) return { ...calc({ ...s, auto: false, k2: Math.max(1, Math.sqrt(s.Rl * s.N / R_HOUSE)) }), infeasible: true };
+    s = { ...s, k2: k };
+  }
+  const Ru = R_HOUSE / s.N;                 // 用户并联总电阻
+  const Rref = Ru * s.k2 * s.k2;            // 折算到降压变压器原线圈一侧
+  const U2 = s.U1 * s.k1;
+  const I2 = U2 / (s.Rl + Rref);
+  const dU = I2 * s.Rl, U3 = U2 - dU, U4 = U3 / s.k2, I4 = U4 / Ru, I1 = I2 * s.k1;
+  const P1 = s.U1 * I1, Ploss = I2 * I2 * s.Rl, Pu = U4 * I4;
+  return { Ru, U2, I2, dU, U3, U4, I4, I1, P1, Ploss, Pu, eta: Pu / P1, k2: s.k2, infeasible: false };
+}
+const fP = P => (P >= 1000 ? `${fmt(P / 1000, 2)} kW` : `${fmt(P, 1)} W`);
+const fU = U => (U >= 1000 ? `${fmt(U / 1000, 2)} kV` : `${fmt(U, 1)} V`);
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+
+function transformer(c, x, y, h, n1, n2, label) {
+  c.fillStyle = '#d1d5db';
+  c.fillRect(x - 6, y - h / 2 - 8, 12, h + 16);
+  const coil = (cx, turns, side) => {
+    c.beginPath();
+    for (let k = 0; k <= 120; k++) {
+      const u = k / 120, yy = y - h / 2 + u * h;
+      const xx = cx + side * Math.abs(Math.sin(u * turns * Math.PI)) * 10;
+      k ? c.lineTo(xx, yy) : c.moveTo(xx, yy);
+    }
+    c.strokeStyle = '#b45309'; c.lineWidth = 2; c.stroke();
+  };
+  coil(x - 14, Math.max(2, Math.min(12, n1)), -1);
+  coil(x + 14, Math.max(2, Math.min(12, n2)), 1);
+  text(c, label, x, y + h / 2 + 44, '#374151', { size: 12, bold: true });
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H, v = calc();
+  view.begin();
+  const yt = H * 0.36, yb = H * 0.64, ym = (yt + yb) / 2, h = yb - yt;
+  const xg = 60, x1 = W * 0.2, x2 = W * 0.68, xu = W * 0.82;
+  const wire = '#374151';
+  // 发电机
+  c.beginPath(); c.arc(xg, ym, 26, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = wire; c.lineWidth = 2; c.stroke();
+  text(c, '~', xg, ym, wire, { bold: true, size: 26, halo: false });
+  text(c, '发电厂', xg, ym + 44, '#374151', { size: 12, bold: true });
+  line(c, xg, ym - 26, xg, yt, wire, 2); line(c, xg, ym + 26, xg, yb, wire, 2);
+  line(c, xg, yt, x1 - 24, yt, wire, 2); line(c, xg, yb, x1 - 24, yb, wire, 2);
+  text(c, `U₁ = ${fU(st.U1)}`, (xg + x1) / 2 + 6, yt - 14, '#1d4ed8', { size: 12, bold: true });
+  text(c, `I₁ = ${fmt(v.I1, 1)} A`, (xg + x1) / 2 + 6, yb + 16, '#b45309', { size: 12, bold: true });
+  transformer(c, x1, ym, h, 3, Math.round(3 * Math.sqrt(st.k1)), `升压 1 : ${st.k1}`);
+  transformer(c, x2, ym, h, Math.round(3 * Math.sqrt(v.k2)), 3, `降压 ${fmt(v.k2, 1)} : 1`);
+  // 输电线（电阻分两半画在两根导线上）
+  const lw = Math.min(6, 1.5 + v.I2 / 15);
+  const xa = x1 + 24, xb = x2 - 24, xm = (xa + xb) / 2;
+  for (const y of [yt, yb]) {
+    line(c, xa, y, xm - 26, y, '#dc2626', lw); line(c, xm + 26, y, xb, y, '#dc2626', lw);
+    c.fillStyle = '#fef3c7'; c.fillRect(xm - 26, y - 8, 52, 16);
+    c.strokeStyle = wire; c.lineWidth = 1.5; c.strokeRect(xm - 26, y - 8, 52, 16);
+  }
+  text(c, `R线/2`, xm, yt - 20, '#92400e', { size: 11 });
+  text(c, `R线/2`, xm, yb + 20, '#92400e', { size: 11 });
+  text(c, `U₂ = ${fU(v.U2)}`, xa + 8, yt - 34, '#1d4ed8', { size: 12, bold: true, align: 'left' });
+  text(c, `U₃ = ${fU(v.U3)}`, xb - 8, yt - 34, '#1d4ed8', { size: 12, bold: true, align: 'right' });
+  text(c, `输电电流 I线 = ${fmt(v.I2, 2)} A`, xm, ym - 12, '#b45309', { size: 13, bold: true });
+  text(c, `损失功率 ${fP(v.Ploss)}（${fmt(v.Ploss / v.P1 * 100, 1)}%）`, xm, ym + 12, '#dc2626', { size: 13, bold: true });
+  // 用户
+  const nl = Math.min(5, st.N), bright = Math.max(0, Math.min(1.3, (v.U4 / 220) ** 2));
+  line(c, x2 + 24, yt, xu + nl * 20, yt, wire, 2); line(c, x2 + 24, yb, xu + nl * 20, yb, wire, 2);
+  text(c, `U₄ = ${fmt(v.U4, 1)} V`, (x2 + xu) / 2 + 6, yt - 14, v.U4 < 200 ? '#b91c1c' : '#1d4ed8', { size: 12, bold: true });
+  if (v.infeasible) text(c, '升压不够：无论怎样降压，用户都得不到 220 V', (x1 + x2) / 2, yb + 50, '#b91c1c', { size: 13, bold: true });
+  for (let k = 0; k < nl; k++) {
+    const x = xu + 8 + k * 20;
+    line(c, x, yt, x, ym - 9, wire, 1.2); line(c, x, ym + 9, x, yb, wire, 1.2);
+    const g = c.createRadialGradient(x, ym, 1, x, ym, 18);
+    g.addColorStop(0, `rgba(250,204,21,${0.9 * Math.min(1, bright)})`); g.addColorStop(1, 'rgba(250,204,21,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(x, ym, 18, 0, Math.PI * 2); c.fill();
+    dot(c, x, ym, 7, `rgba(250,204,21,${0.25 + 0.75 * Math.min(1, bright)})`, wire, 1.2);
+  }
+  text(c, `用户 ${st.N} 户`, xu + 40, yb + 20, '#374151', { size: 12, bold: true });
+  text(c, v.U4 < 200 ? '电压偏低，灯变暗' : v.U4 > 240 ? '电压偏高' : '电压正常', xu + 40, yb + 38, v.U4 < 200 || v.U4 > 240 ? '#b91c1c' : '#15803d', { size: 12 });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, half = chartView.W / 2;
+  chartView.begin();
+  const pct = v => v.Ploss / v.P1 * 100;
+  const lossK = [];
+  for (let k = 1; k <= 40; k += 0.25) { const v = calc({ ...st, k1: k }); if (!v.infeasible) lossK.push([k, pct(v)]); }
+  const v = calc();
+  Lab.plot(c, { x: 0, y: 0, w: half, h: chartView.H }, {
+    xmin: 1, xmax: 40, ymin: 0, ymax: 50, xlabel: '升压比 n₂/n₁', ylabel: '线损占比 P损/P₁（%）',
+    title: st.auto ? '曲线左端以外：送不到 220 V' : '',
+    series: [{ pts: lossK, color: '#dc2626' }],
+    points: v.infeasible ? [] : [{ x: st.k1, y: Math.min(49, pct(v)), color: '#dc2626', label: `${fmt(pct(v), 1)}%` }],
+  });
+  const byN = [];
+  for (let n = 1; n <= 50; n++) { const w = calc({ ...st, N: n }); if (!w.infeasible) byN.push([n, st.auto ? pct(w) : w.U4]); }
+  if (st.auto) {
+    Lab.plot(c, { x: half, y: 0, w: half, h: chartView.H }, {
+      xmin: 1, xmax: 50, ymin: 0, ymax: Math.max(2, ...byN.map(p => p[1])) * 1.2, xlabel: '用户数', ylabel: '线损占比（%）',
+      series: [{ pts: byN, color: '#dc2626' }],
+      points: v.infeasible ? [] : [{ x: st.N, y: pct(v), color: '#dc2626', label: `${fmt(pct(v), 2)}%` }],
+    });
+  } else {
+    Lab.plot(c, { x: half, y: 0, w: half, h: chartView.H }, {
+      xmin: 1, xmax: 50, ymin: 0, ymax: Math.max(260, ...byN.map(p => p[1])) * 1.05, xlabel: '用户数', ylabel: '用户电压 U₄ / V',
+      series: [{ pts: byN, color: '#2563eb' }],
+      hlines: [{ y: 220, color: '#16a34a', label: '220 V' }],
+      points: [{ x: st.N, y: v.U4, color: '#2563eb', label: `${fmt(v.U4, 0)} V` }],
+    });
+  }
+}
+
+// ---------- 读数 ----------
+function updatePanel() {
+  const v = calc();
+  $('tbl').innerHTML = `
+    <tr><td>发电机输出功率 P₁ = U₁I₁</td><td>${fP(v.P1)}</td></tr>
+    <tr><td>输电电压 U₂ = U₁·n₂/n₁</td><td>${fU(v.U2)}</td></tr>
+    <tr><td>输电电流 I<sub>线</sub> = I₁·n₁/n₂</td><td>${fmt(v.I2, 2)} A</td></tr>
+    <tr><td>输电线上损失的电压 ΔU = I<sub>线</sub>R<sub>线</sub></td><td>${fU(v.dU)}</td></tr>
+    <tr><td>输电线上损失的功率 P<sub>损</sub> = I<sub>线</sub>²R<sub>线</sub></td><td>${fP(v.Ploss)}</td></tr>
+    <tr><td>降压变压器输入电压 U₃ = U₂ − ΔU</td><td>${fU(v.U3)}</td></tr>
+    <tr><td>用户电压 U₄ = U₃·n₄/n₃</td><td>${fmt(v.U4, 1)} V</td></tr>
+    <tr><td>用户得到的功率</td><td>${fP(v.Pu)}</td></tr>
+    <tr><td>输电效率 η</td><td>${fmt(v.eta * 100, 1)}%</td></tr>`;
+  const no = calc({ ...st, k1: 1 });
+  if (st.auto) { $('k2').value = v.k2; $('k2v').textContent = `${fmt(v.k2, 1)} : 1`; }
+  $('chain').innerHTML = (v.infeasible ? `<div class="node bad"><b>输电电压太低</b>：线路上损失的电压太大，即使选最合适的降压比，用户也只能得到 ${fmt(v.U4, 1)} V。增大升压比或减小输电线电阻试试。</div><div class="link">↓</div>` : '') + `
+    <div class="node"><span class="f">① 先求输电电流（关键量）</span><br>
+      <span class="v">I<sub>线</sub> = ${fmt(v.I2, 2)} A</span><br><span class="n">由用户的用电情况和整个电路共同决定：用户越多，I<sub>线</sub> 越大。</span></div>
+    <div class="link">↓</div>
+    <div class="node"><span class="f">② P<sub>损</sub> = I<sub>线</sub>²R<sub>线</sub> = (P/U₂)²R<sub>线</sub></span><br>
+      <span class="v">${fmt(v.I2, 2)}² × ${fmt(st.Rl, 1)} = ${fP(v.Ploss)}</span><br>
+      <span class="n">${no.infeasible
+        ? `同样的用户如果不升压（升压比为 1），无论怎样降压，用户最多只能得到 ${fmt(no.U4, 1)} V。`
+        : `同样的用户如果不升压（升压比为 1），线损占比为 ${fmt(no.Ploss / no.P1 * 100, 1)}%。`}</span></div>
+    <div class="link">↓</div>
+    <div class="node"><span class="f">③ 电压关系：U₂ = ΔU + U₃</span><br>
+      <span class="v">${fU(v.U2)} = ${fU(v.dU)} + ${fU(v.U3)}</span></div>
+    <div class="link">↓</div>
+    <div class="node"><span class="f">④ 功率关系：P₁ = P<sub>损</sub> + P<sub>用户</sub></span><br>
+      <span class="v">${fP(v.P1)} = ${fP(v.Ploss)} + ${fP(v.Pu)}</span></div>`;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+Lab.range('U1', v => `${v} V`, v => { st.U1 = v; render(); });
+Lab.range('k1', v => `${v} : 1`, v => { st.k1 = v; render(); });
+Lab.range('Rl', v => `${fmt(v, 1)} Ω`, v => { st.Rl = v; render(); });
+Lab.range('k2', v => `${fmt(v, 1)} : 1`, v => { st.k2 = v; render(); });
+Lab.range('N', v => `${v} 户`, v => { st.N = v; render(); });
+function syncAuto() { $('k2').disabled = st.auto; $('k2Row').style.opacity = st.auto ? 0.55 : 1; }
+$('auto').addEventListener('change', e => {
+  st.auto = e.target.checked;
+  if (!st.auto) st.k2 = +$('k2').value;
+  syncAuto();
+  render();
+});
+syncAuto();
+render();
+</script>
+</body>
+</html>

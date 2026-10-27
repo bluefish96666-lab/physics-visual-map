@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>闭合电路欧姆定律 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+<style>
+  .tbl th { font-size: 12px; color: #6b7280; font-weight: normal; text-align: right; padding: 3px 4px; border-bottom: 1px solid #e5e7eb; }
+  .tbl th:first-child { text-align: left; }
+  .tbl td { text-align: right; font-variant-numeric: tabular-nums; }
+  .tbl td:first-child { text-align: left; font-weight: normal; }
+  .up { color: #b91c1c; font-weight: bold; } .down { color: #1d4ed8; font-weight: bold; } .same { color: #6b7280; }
+</style>
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>闭合电路欧姆定律</b><span class="crumb">必修第三册 · 第十二章 电能 能量守恒定律</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint">上下拖动滑动变阻器的滑片改变外电阻 R（或在右侧换成热敏/光敏电阻） · 小圆点表示电流，越快电流越大</div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">拖动滑片或滑块，观察电流、路端电压和功率怎么变。动态分析口诀：<b>R 变大 → I 变小 → 内电压 Ir 变小 → 路端电压 U 变大</b>。把外电阻换成热敏/光敏电阻，就是传感器电路。</div>
+
+    <h2>电源与外电路</h2>
+    <div class="row">电动势 E <input type="range" id="E" min="1.5" max="12" step="0.5" value="6"><span class="val" id="Ev"></span></div>
+    <div class="row">内阻 r <input type="range" id="r" min="0.2" max="5" step="0.1" value="2"><span class="val" id="rv"></span></div>
+    <div class="row">外电路元件
+      <select id="elem">
+        <option value="rheo">滑动变阻器</option>
+        <option value="ntc">热敏电阻（温度升高，电阻变小）</option>
+        <option value="ldr">光敏电阻（光照增强，电阻变小）</option>
+      </select>
+    </div>
+    <div class="row" id="RRow">外电阻 R <input type="range" id="R" min="0" max="20" step="0.1" value="4"><span class="val" id="Rv"></span></div>
+    <div class="row" id="TRow">温度 t <input type="range" id="T" min="0" max="100" step="1" value="25"><span class="val" id="Tv"></span></div>
+    <div class="row" id="LRow">光照强度 <input type="range" id="Lx" min="0" max="100" step="1" value="20"><span class="val" id="Lxv"></span></div>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="sw" checked> 开关闭合</label>
+      <button id="short">短路（R = 0）</button>
+      <button id="match">R = r</button>
+    </div>
+    <div class="row"><button id="setRef" style="flex:1">把当前状态设为「初始」</button></div>
+
+    <h2>初始 → 现在</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul>
+        <li>闭合电路欧姆定律 I = E/(R + r)；路端电压 U = E − Ir，随 R 增大而增大。</li>
+        <li>断路时 I = 0，U = E（理想电压表直接接在电源两端，读数等于电动势）。</li>
+        <li>短路时 R = 0，I = E/r，很大，会烧坏电源。</li>
+        <li>电源 U–I 图线：纵截距是 E，斜率的绝对值是 r，横截距是短路电流 E/r（纵轴从 0 开始时）。</li>
+        <li>R = r 时输出功率最大，P<sub>max</sub> = E²/(4r)，此时效率只有 50%；R 越大效率越高。</li>
+        <li>除 R = r 外，同一输出功率对应两个外电阻 R₁、R₂，且 R₁R₂ = r²。</li>
+      </ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const RMAX = 20;
+const st = { E: 6, r: 2, R: 4, on: true, phase: 0, elem: 'rheo', T: 25, Lx: 20, Rrheo: 4 };
+let ref = null;
+
+// 热敏电阻（负温度系数）：25 °C 时 10 Ω，B = 3500 K；光敏电阻：无光 20 Ω，光越强越小
+const sensorR = () => (st.elem === 'ntc' ? 10 * Math.exp(3500 * (1 / (st.T + 273.15) - 1 / 298.15))
+  : st.elem === 'ldr' ? 20 / (1 + 0.2 * st.Lx) : st.Rrheo);
+function syncR() { st.R = Math.round(sensorR() * 100) / 100; }
+
+function calc(s = st) {
+  const I = s.on ? s.E / (s.R + s.r) : 0;
+  const U = s.E - I * s.r;
+  return { I, U, Ur: I * s.r, Pt: s.E * I, Po: U * I, Pr: I * I * s.r, eta: s.on && I > 0 ? U / s.E : 1 };
+}
+
+// ---------- 电路 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let G = null;
+
+function layout() {
+  const W = view.W, H = view.H, wide = W >= 760;
+  const cw = wide ? W * 0.55 : W, ch = wide ? H : H * 0.55;
+  const L = Math.max(110, cw * 0.24), Rr = cw - Math.max(70, cw * 0.16);
+  const T = Math.max(50, ch * 0.16), B = ch - Math.max(40, ch * 0.14);
+  const dia = wide ? { x: cw + 10, y: 40, w: W - cw - 30, h: H - 80 } : { x: 30, y: ch + 10, w: W - 60, h: H - ch - 50 };
+  return { W, H, L, Rr, T, B, dia, rh: { x: Rr, y1: T + (B - T) * 0.2, y2: B - (B - T) * 0.2 } };
+}
+
+function loopPath() {
+  const { L, Rr, T, B } = G;
+  return [[L, B], [L, T], [Rr, T], [Rr, B], [L, B]];
+}
+
+function draw() {
+  if (!view.W) return;
+  G = layout();
+  const c = ctx, v = calc(), { L, Rr, T, B, rh } = G;
+  view.begin();
+  const wire = '#374151';
+  const midY = (T + B) / 2;
+  // 导线（留出元件位置）
+  const bat = { y1: midY - 34, y2: midY + 46 };
+  line(c, L, T, L, bat.y1, wire, 2);
+  line(c, L, bat.y2, L, B, wire, 2);
+  line(c, L, B, Rr, B, wire, 2);
+  line(c, Rr, B, Rr, rh.y2, wire, 2);
+  line(c, Rr, rh.y1, Rr, T, wire, 2);
+  const swX = L + (Rr - L) * 0.25, amX = L + (Rr - L) * 0.62;
+  line(c, L, T, swX - 18, T, wire, 2);
+  line(c, swX + 18, T, amX - 16, T, wire, 2);
+  line(c, amX + 16, T, Rr, T, wire, 2);
+
+  // 开关
+  dot(c, swX - 18, T, 3.5, wire, null);
+  dot(c, swX + 18, T, 3.5, wire, null);
+  const a = st.on ? 0 : -0.55;
+  line(c, swX - 18, T, swX - 18 + Math.cos(a) * 36, T + Math.sin(a) * 36, wire, 2.5);
+  text(c, st.on ? 'S 闭合' : 'S 断开', swX, T - 18, st.on ? '#15803d' : '#b91c1c', { size: 12, bold: true });
+
+  // 电流表
+  c.beginPath(); c.arc(amX, T, 16, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = wire; c.lineWidth = 2; c.stroke();
+  text(c, 'A', amX, T + 1, wire, { bold: true, size: 14, halo: false });
+  text(c, `I = ${fmt(v.I, 2)} A`, amX, T - 28, '#b45309', { bold: true, size: 14 });
+
+  // 电源：电动势 + 内阻（虚线框）
+  c.save(); c.setLineDash([4, 4]); c.strokeStyle = '#9ca3af'; c.lineWidth = 1.2;
+  c.strokeRect(L - 34, bat.y1 - 8, 68, bat.y2 - bat.y1 + 16); c.restore();
+  line(c, L - 18, midY - 24, L + 18, midY - 24, wire, 2.5);
+  line(c, L - 9, midY - 14, L + 9, midY - 14, wire, 5);
+  line(c, L, bat.y1, L, midY - 24, wire, 2);
+  line(c, L, midY - 14, L, midY + 4, wire, 2);
+  c.fillStyle = '#fef3c7'; c.fillRect(L - 7, midY + 4, 14, 28);
+  c.strokeStyle = wire; c.lineWidth = 1.5; c.strokeRect(L - 7, midY + 4, 14, 28);
+  line(c, L, midY + 32, L, bat.y2, wire, 2);
+  text(c, '+', L + 24, midY - 30, '#b91c1c', { bold: true });
+  text(c, `E = ${fmt(st.E, 1)} V`, L + 42, midY - 14, '#111827', { size: 12, bold: true, align: 'left' });
+  text(c, `r = ${fmt(st.r, 1)} Ω`, L + 42, midY + 18, '#92400e', { size: 12, bold: true, align: 'left' });
+
+  // 电压表：接在电源两端，测路端电压
+  const vx = L - 80, vy = midY;
+  line(c, L, T, vx, T, '#9ca3af', 1.4);
+  line(c, vx, T, vx, vy - 16, '#9ca3af', 1.4);
+  line(c, L, B, vx, B, '#9ca3af', 1.4);
+  line(c, vx, B, vx, vy + 16, '#9ca3af', 1.4);
+  c.beginPath(); c.arc(vx, vy, 16, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.strokeStyle = wire; c.lineWidth = 2; c.stroke();
+  text(c, 'V', vx, vy + 1, wire, { bold: true, size: 14, halo: false });
+  text(c, `U = ${fmt(v.U, 2)} V`, vx, B + 20, '#1d4ed8', { bold: true, size: 14 });
+
+  if (st.elem !== 'rheo') drawSensor(c, Rr, rh, wire);
+  else drawRheostat(c, Rr, rh, wire);
+  drawDots(v);
+  drawDiagram(v);
+}
+
+function drawSensor(c, Rr, rh, wire) {
+  const ym = (rh.y1 + rh.y2) / 2, hh = 34;
+  line(c, Rr, rh.y1, Rr, ym - hh, wire, 2);
+  line(c, Rr, ym + hh, Rr, rh.y2, wire, 2);
+  const ntc = st.elem === 'ntc';
+  c.fillStyle = ntc ? `rgb(${Math.round(180 + st.T * 0.75)}, ${Math.round(220 - st.T * 1.2)}, ${Math.round(230 - st.T * 1.6)})` : '#fef9c3';
+  c.fillRect(Rr - 12, ym - hh, 24, hh * 2);
+  c.strokeStyle = wire; c.lineWidth = 1.5; c.strokeRect(Rr - 12, ym - hh, 24, hh * 2);
+  if (ntc) {
+    line(c, Rr - 20, ym + hh - 6, Rr + 20, ym - hh + 6, wire, 1.5);
+    line(c, Rr + 20, ym - hh + 6, Rr + 28, ym - hh + 6, wire, 1.5);
+    text(c, `热敏电阻 t = ${st.T} °C`, Rr - 26, ym - 10, '#b45309', { bold: true, size: 13, align: 'right' });
+  } else {
+    const n = Math.round(st.Lx / 20) + 1;
+    for (let k = 0; k < n; k++) vec(c, Rr + 50, ym - 30 + k * 14, Rr + 16, ym - 20 + k * 10, '#eab308', 1.8, 7);
+    text(c, `光敏电阻 光照 ${st.Lx}`, Rr - 20, ym - 10, '#a16207', { bold: true, size: 13, align: 'right' });
+  }
+  text(c, `R = ${fmt(st.R, 2)} Ω`, Rr - (ntc ? 26 : 20), ym + 12, '#2563eb', { bold: true, size: 13, align: 'right' });
+}
+
+function drawRheostat(c, Rr, rh, wire) {
+  // 滑动变阻器：接入电路的长度与 R 成正比
+  const rw = 20, ky = (rh.y2 - rh.y1) / RMAX, yk = rh.y1 + st.R * ky;
+  c.fillStyle = '#f3f4f6'; c.fillRect(Rr - rw / 2, rh.y1, rw, rh.y2 - rh.y1);
+  c.fillStyle = '#fca5a5'; c.fillRect(Rr - rw / 2, rh.y1, rw, yk - rh.y1);
+  c.strokeStyle = wire; c.lineWidth = 1.5; c.strokeRect(Rr - rw / 2, rh.y1, rw, rh.y2 - rh.y1);
+  for (let y = rh.y1 + 6; y < rh.y2; y += 6) line(c, Rr - rw / 2, y, Rr + rw / 2, y, 'rgba(55,65,81,.25)', 1);
+  // 滑片
+  c.beginPath(); c.moveTo(Rr + rw / 2 + 2, yk); c.lineTo(Rr + rw / 2 + 16, yk - 9); c.lineTo(Rr + rw / 2 + 16, yk + 9); c.closePath();
+  c.fillStyle = '#2563eb'; c.fill();
+  line(c, Rr + rw / 2 + 16, yk, Rr + rw / 2 + 30, yk, '#2563eb', 2);
+  line(c, Rr + rw / 2 + 30, yk, Rr + rw / 2 + 30, rh.y2 + 14, '#2563eb', 2);
+  line(c, Rr + rw / 2 + 30, rh.y2 + 14, Rr, rh.y2 + 14, '#2563eb', 2);
+  text(c, `R = ${fmt(st.R, 1)} Ω`, Rr + rw / 2 + 36, yk, '#2563eb', { bold: true, size: 13, align: 'left' });
+  text(c, '滑动变阻器', Rr, rh.y1 - 12, '#6b7280', { size: 12 });
+}
+
+function drawDots(v) {
+  const c = ctx, { L, T } = G;
+  if (v.I > 0) {
+    const pts = loopPath();
+    const segs = [];
+    let tot = 0;
+    for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push(l); tot += l; }
+    const gap = 30;
+    for (let s = st.phase % gap; s < tot; s += gap) {
+      let acc = 0, k = 0;
+      while (k < segs.length - 1 && acc + segs[k] < s) acc += segs[k++];
+      const f = (s - acc) / segs[k];
+      const x = pts[k][0] + (pts[k + 1][0] - pts[k][0]) * f, y = pts[k][1] + (pts[k + 1][1] - pts[k][1]) * f;
+      dot(c, x, y, 3.2, '#f59e0b', null);
+    }
+    vec(c, L + 26, T + 22, L + 26, T + 4, '#f59e0b', 2, 7);
+  }
+}
+
+// 电势升降图：从负极出发绕回路一周
+function drawDiagram(v) {
+  const c = ctx, d = G.dia;
+  if (d.w < 160 || d.h < 120) return;
+  const x0 = d.x + 40, x1 = d.x + d.w - 10, yb = d.y + d.h - 30, yt = d.y + 30;
+  const Y = p => yb - p / 12 * (yb - yt);
+  text(c, '电势升降图（负极电势取 0）', d.x + 40, d.y + 6, '#374151', { bold: true, size: 13, align: 'left' });
+  line(c, x0, yb, x1, yb, '#9ca3af', 1);
+  line(c, x0, yb, x0, yt - 6, '#9ca3af', 1);
+  for (let p = 0; p <= 12; p += 3) text(c, String(p), x0 - 6, Y(p), '#6b7280', { size: 11, align: 'right', halo: false });
+  text(c, 'φ / V', x0 + 4, yt - 14, '#6b7280', { size: 11, align: 'left', halo: false });
+  const w = (x1 - x0) / 5;
+  const xs = [x0, x0 + w * 0.6, x0 + w * 1.6, x0 + w * 2.4, x0 + w * 3.8, x1];
+  const ps = [0, st.E, v.U, v.U, 0, 0];
+  c.beginPath();
+  c.moveTo(xs[0], Y(0));
+  c.lineTo(xs[1], Y(0)); c.lineTo(xs[1], Y(st.E));
+  c.lineTo(xs[2], Y(v.U)); c.lineTo(xs[3], Y(v.U)); c.lineTo(xs[4], Y(0)); c.lineTo(xs[5], Y(0));
+  c.strokeStyle = '#7c3aed'; c.lineWidth = 3; c.lineJoin = 'round'; c.stroke();
+  const lab = (x, s, col) => text(c, s, x, yb + 14, col, { size: 12 });
+  lab(xs[1], '电源内部', '#374151');
+  lab((xs[1] + xs[2]) / 2 + 10, '内阻 r', '#92400e');
+  lab((xs[3] + xs[4]) / 2, '外电阻 R', '#2563eb');
+  vec(c, xs[1] - 10, Y(0), xs[1] - 10, Y(st.E), '#16a34a', 1.6, 7);
+  text(c, `升高 E = ${fmt(st.E, 1)} V`, xs[1] - 14, (Y(0) + Y(st.E)) / 2, '#16a34a', { size: 12, bold: true, align: 'right' });
+  if (v.Ur > 0.01) text(c, `降低 Ir = ${fmt(v.Ur, 2)} V`, (xs[1] + xs[2]) / 2 + 6, Y((st.E + v.U) / 2) - 14, '#92400e', { size: 12, bold: true, align: 'left' });
+  text(c, `降低 IR = U = ${fmt(v.U, 2)} V`, (xs[3] + xs[4]) / 2 + 8, Y(v.U / 2), '#2563eb', { size: 12, bold: true, align: 'left' });
+  line(c, xs[2], Y(v.U), x1, Y(v.U), 'rgba(37,99,235,.35)', 1, [4, 4]);
+  text(c, '一周升降相抵：E = Ir + IR', (x0 + x1) / 2, yt - 4, '#7c3aed', { size: 12 });
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, v = calc(), half = chartView.W / 2;
+  chartView.begin();
+  const Isc = st.E / st.r;
+  const ui = [[0, st.E], [Isc, 0]];
+  const imax = Math.min(Isc, 8) * 1.05;
+  const Rline = st.R > 0 ? [[0, 0], [Math.min(imax, st.E / st.R * 1.5), Math.min(imax, st.E / st.R * 1.5) * st.R]] : [[0, 0], [imax, 0]];
+  const pts = [];
+  if (st.on) pts.push({ x: v.I, y: v.U, color: '#dc2626', label: `(${fmt(v.I, 2)} A, ${fmt(v.U, 2)} V)` });
+  Lab.plot(c, { x: 0, y: 0, w: half, h: chartView.H }, {
+    xmin: 0, xmax: imax, ymin: 0, ymax: 12, xlabel: 'I / A', ylabel: 'U / V', legendX: 50,
+    series: [{ pts: ui, color: '#7c3aed', label: '电源 U = E − Ir' }, { pts: Rline, color: '#2563eb', dash: [5, 4], label: '电阻 U = IR' }],
+    points: pts,
+  });
+  const Pmax = st.E * st.E / (4 * st.r);
+  const pr = [], eta = [];
+  const rmax = Math.max(RMAX, Math.ceil(st.R / 5) * 5);
+  for (let R = 0; R <= rmax + 1e-9; R += 0.1) {
+    const I = st.E / (R + st.r);
+    pr.push([R, I * I * R]);
+    eta.push([R, R / (R + st.r) * Pmax * 1.25]);
+  }
+  Lab.plot(c, { x: half, y: 0, w: half, h: chartView.H }, {
+    xmin: 0, xmax: rmax, ymin: 0, ymax: Pmax * 1.25, xlabel: 'R / Ω', ylabel: '输出功率 P出 / W', legendX: 112,
+    series: [{ pts: pr, color: '#dc2626', label: 'P出' }, { pts: eta, color: '#16a34a', dash: [4, 4], label: '效率 η（顶格 100%）', alpha: 0.7 }],
+    vlines: [{ x: st.r, color: '#9ca3af', label: `R = r` }],
+    points: st.on ? [{ x: st.R, y: v.Po, color: '#dc2626', label: `${fmt(v.Po, 2)} W` }] : [],
+  });
+}
+
+// ---------- 表格 ----------
+function trend(a, b) {
+  const r = (b - a) / Math.max(Math.abs(a), 1e-6);
+  if (Math.abs(b - a) < 1e-6 || Math.abs(r) < 0.005) return '<span class="same">不变</span>';
+  return r > 0 ? '<span class="up">↑</span>' : '<span class="down">↓</span>';
+}
+function updatePanel() {
+  const v = calc(), r0 = ref || v;
+  const rows = [
+    ['外电阻 R', ref ? ref.R : st.R, st.R, 'Ω'],
+    ['电流 I = E/(R+r)', r0.I, v.I, 'A'],
+    ['内电压 U<sub>内</sub> = Ir', r0.Ur, v.Ur, 'V'],
+    ['路端电压 U = E − Ir', r0.U, v.U, 'V'],
+    ['总功率 P<sub>总</sub> = EI', r0.Pt, v.Pt, 'W'],
+    ['输出功率 P<sub>出</sub> = UI', r0.Po, v.Po, 'W'],
+    ['内阻发热 P<sub>内</sub> = I²r', r0.Pr, v.Pr, 'W'],
+    ['效率 η = U/E', r0.eta * 100, v.eta * 100, '%'],
+  ];
+  $('tbl').innerHTML = '<tr><th>物理量</th><th>初始</th><th>现在</th><th></th></tr>' + rows.map(([n, a, b, u]) =>
+    `<tr><td>${n}</td><td>${fmt(a, 2)}</td><td>${fmt(b, 2)} ${u}</td><td>${trend(a, b)}</td></tr>`).join('');
+
+  if (!st.on) {
+    $('chain').innerHTML = `<div class="node"><span class="f">开关断开：I = 0</span><br>内电压 Ir = 0，路端电压 U = E = ${fmt(st.E, 1)} V。<br><span class="n">所以把理想电压表直接接在电源两极，读数就是电动势。</span></div>`;
+    return;
+  }
+  const Pmax = st.E * st.E / (4 * st.r);
+  const R2 = st.R > 0 ? st.r * st.r / st.R : Infinity;
+  let sensor = '';
+  if (st.elem !== 'rheo') {
+    const ntc = st.elem === 'ntc', dR = ref ? st.R - ref.R : 0;
+    const cause = ntc ? (dR < 0 ? '温度升高' : '温度降低') : (dR < 0 ? '光照增强' : '光照减弱');
+    sensor = `<div class="node"><span class="f">传感器：把${ntc ? '温度' : '光照'}变化转换成电阻变化</span><br>`
+      + (Math.abs(dR) < 0.01 ? '<span class="n">改变' + (ntc ? '温度' : '光照') + '后，这里会给出动态分析（和“初始”状态比较）。</span>'
+        : `${cause} → R ${dR < 0 ? '变小' : '变大'}（${fmt(ref.R, 2)} → ${fmt(st.R, 2)} Ω）→ I ${dR < 0 ? '变大' : '变小'} → Ir ${dR < 0 ? '变大' : '变小'} → U ${dR < 0 ? '变小' : '变大'}<br>`
+          + `<span class="n">若与传感器串联一个定值电阻 R₀，R₀ 两端电压 IR₀ 随 I ${dR < 0 ? '增大' : '减小'}，可用来触发报警或自动控制。</span>`)
+      + `</div><div class="link">↓</div>`;
+  }
+  $('chain').innerHTML = sensor + `
+    <div class="node"><span class="f">I = E/(R + r)</span><br><span class="v">${fmt(st.E, 1)} ÷ (${fmt(st.R, 1)} + ${fmt(st.r, 1)}) = ${fmt(v.I, 3)} A</span></div>
+    <div class="link">↓ 内阻分走一部分电压</div>
+    <div class="node"><span class="f">U = E − Ir</span><br><span class="v">${fmt(st.E, 1)} − ${fmt(v.I, 3)} × ${fmt(st.r, 1)} = ${fmt(v.U, 2)} V</span></div>
+    <div class="link">↓ 能量守恒</div>
+    <div class="node"><span class="f">EI = UI + I²r</span><br><span class="v">${fmt(v.Pt, 2)} W = ${fmt(v.Po, 2)} W + ${fmt(v.Pr, 2)} W</span></div>
+    <div class="link">↓ 输出功率随 R 变化</div>
+    <div class="node"><span class="f">R = r 时 P<sub>出</sub> 最大 = E²/(4r) = ${fmt(Pmax, 2)} W</span><br>
+      ${Math.abs(st.R - st.r) < 0.05 ? '<span class="good">当前 R = r，输出功率最大，效率 50%</span>'
+        : `<span class="v">与当前输出功率相同的另一个外电阻：r²/R = ${Number.isFinite(R2) ? fmt(R2, 2) + ' Ω' : '—'}</span>`}</div>`;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+
+// ---------- 交互 ----------
+const anim = Lab.loop(dt => { st.phase += dt * calc().I * 60; draw(); });
+anim.start();
+
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    if (!G || st.elem !== 'rheo') return null;
+    const { rh, Rr } = G, yk = rh.y1 + st.R * (rh.y2 - rh.y1) / RMAX;
+    return Math.abs(py - yk) < rad && px > Rr - 14 && px < Rr + 60 ? 'knob' : null;
+  },
+  move(h, px, py) {
+    const { rh } = G;
+    st.R = st.Rrheo = Math.round(Math.max(0, Math.min(RMAX, (py - rh.y1) / (rh.y2 - rh.y1) * RMAX)) * 10) / 10;
+    Lab.setRange('R', st.R);
+    render();
+  },
+});
+
+Lab.range('E', v => `${fmt(v, 1)} V`, v => { st.E = v; render(); });
+Lab.range('r', v => `${fmt(v, 1)} Ω`, v => { st.r = v; render(); });
+Lab.range('R', v => `${fmt(v, 1)} Ω`, v => { st.R = st.Rrheo = v; render(); });
+Lab.range('T', v => `${v} °C`, v => { st.T = v; syncR(); render(); });
+Lab.range('Lx', v => `${v}`, v => { st.Lx = v; syncR(); render(); });
+function showElemRows() {
+  $('RRow').style.display = st.elem === 'rheo' ? '' : 'none';
+  $('TRow').style.display = st.elem === 'ntc' ? '' : 'none';
+  $('LRow').style.display = st.elem === 'ldr' ? '' : 'none';
+}
+function setElem(e) { st.elem = e; $('elem').value = e; showElemRows(); syncR(); }
+$('elem').addEventListener('change', e => { setElem(e.target.value); setRef(); });
+$('sw').addEventListener('change', e => { st.on = e.target.checked; render(); });
+const setRheo = R => { setElem('rheo'); st.R = st.Rrheo = R; Lab.setRange('R', R); render(); };
+$('short').addEventListener('click', () => setRheo(0));
+$('match').addEventListener('click', () => setRheo(st.r));
+showElemRows();
+function setRef() { ref = { ...calc(), R: st.R }; render(); }
+$('setRef').addEventListener('click', setRef);
+setRef();
+</script>
+</body>
+</html>

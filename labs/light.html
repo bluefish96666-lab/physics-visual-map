@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>光的折射、全反射与干涉 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>光的折射、全反射与双缝干涉</b><span class="crumb">选择性必修第一册 · 第四章 光</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">几何光学题的套路：<b>画光路 → 找入射角和折射角 → n = sinθ₁/sinθ₂</b>；光从玻璃射向空气时先算临界角 sin C = 1/n，入射角 ≥ C 就全反射。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="semi" checked>半圆形玻璃砖</label>
+      <label class="chk"><input type="radio" name="mode" value="block">平行玻璃砖</label>
+      <label class="chk"><input type="radio" name="mode" value="prism">三棱镜</label>
+      <label class="chk"><input type="radio" name="mode" value="slit">双缝干涉</label>
+    </div>
+
+    <div id="glassPanel">
+      <h2>介质</h2>
+      <div class="row">折射率 n <input type="range" id="n" min="1.2" max="2.4" step="0.01" value="1.5"><span class="val" id="nv"></span></div>
+    </div>
+    <div id="semiPanel">
+      <div class="row">
+        <label class="chk"><input type="radio" name="entry" value="center" checked>沿半径射向圆心</label>
+        <label class="chk"><input type="radio" name="entry" value="offset">垂直平面射入</label>
+      </div>
+      <div class="row" id="iRow">在平面上的入射角 i <input type="range" id="i" min="0" max="89" step="0.1" value="30"><span class="val" id="iv"></span></div>
+      <div class="row" id="sRow">到圆心的距离 x <input type="range" id="s" min="0" max="0.99" step="0.01" value="0.5"><span class="val" id="sv"></span></div>
+    </div>
+    <div id="blockPanel">
+      <div class="row">入射角 θ₁ <input type="range" id="th1" min="0" max="85" step="1" value="60"><span class="val" id="th1v"></span></div>
+      <div class="row">厚度 d <input type="range" id="bd" min="0.3" max="1.5" step="0.1" value="1"><span class="val" id="bdv"></span></div>
+    </div>
+    <div id="prismPanel">
+      <div class="row">顶角 A <input type="range" id="A" min="30" max="90" step="1" value="60"><span class="val" id="Av"></span></div>
+      <div class="row">入射角 i <input type="range" id="pi" min="0" max="89" step="0.1" value="48.6"><span class="val" id="piv"></span></div>
+    </div>
+    <div id="slitPanel">
+      <div class="row">波长 λ <input type="range" id="lam" min="400" max="700" step="10" value="600"><span class="val" id="lamv"></span></div>
+      <div class="row">双缝间距 d <input type="range" id="sd" min="0.1" max="1" step="0.05" value="0.2"><span class="val" id="sdv"></span></div>
+      <div class="row">缝到屏的距离 l <input type="range" id="sL" min="0.5" max="2" step="0.1" value="1"><span class="val" id="sLv"></span></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="white">改用白光</label></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>数据</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const DEG = Math.PI / 180, C_LIGHT = 3e8;
+const st = { mode: 'semi', n: 1.5, entry: 'center', i: 30, s: 0.5, th1: 60, bd: 1, A: 60, pi: 48.6, lam: 600, sd: 0.2, sL: 1, white: false };
+
+// ---------- 光线追迹 ----------
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], addv = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k], dotp = (a, b) => a[0] * b[0] + a[1] * b[1];
+function hitEdge(p, d, e) {
+  if (e.type === 'seg') {
+    const ab = sub(e.b, e.a), den = d[0] * ab[1] - d[1] * ab[0];
+    if (Math.abs(den) < 1e-12) return null;
+    const ap = sub(e.a, p), t = (ap[0] * ab[1] - ap[1] * ab[0]) / den, u = (ap[0] * d[1] - ap[1] * d[0]) / den;
+    if (t > 1e-7 && u >= -1e-9 && u <= 1 + 1e-9) return { t, nrm: [ab[1], -ab[0]].map(v => v / Math.hypot(...ab)) };
+    return null;
+  }
+  const f = sub(p, e.c), b = dotp(f, d), cc = dotp(f, f) - e.r * e.r, disc = b * b - cc;
+  if (disc < 0) return null;
+  let best = null;
+  for (const t of [-b - Math.sqrt(disc), -b + Math.sqrt(disc)]) {
+    if (t <= 1e-7) continue;
+    const q = addv(p, d, t), ang = Math.atan2(q[1] - e.c[1], q[0] - e.c[0]);
+    if (ang >= e.a0 - 1e-9 && ang <= e.a1 + 1e-9 && (!best || t < best.t)) best = { t, nrm: sub(q, e.c).map(v => v / e.r) };
+  }
+  return best;
+}
+function nearest(p, d, edges) {
+  let best = null;
+  for (const e of edges) { const h = hitEdge(p, d, e); if (h && (!best || h.t < best.t)) best = h; }
+  return best;
+}
+function fresnel(n1, n2, ci, ct) {
+  const rs = ((n1 * ci - n2 * ct) / (n1 * ci + n2 * ct)) ** 2, rp = ((n1 * ct - n2 * ci) / (n1 * ct + n2 * ci)) ** 2;
+  return (rs + rp) / 2;
+}
+function trace(p0, d0, edges, n, inside0 = false) {
+  const segs = [], weak = [], hits = [];
+  let p = p0, d = d0, inside = inside0, I = 1, Lin = 0;
+  for (let k = 0; k < 12; k++) {
+    const h = nearest(p, d, edges);
+    if (!h) { segs.push({ a: p, b: addv(p, d, 12), I, inside }); break; }
+    const q = addv(p, d, h.t);
+    segs.push({ a: p, b: q, I, inside });
+    if (inside) Lin += h.t;
+    let nr = h.nrm; if (dotp(nr, d) > 0) nr = nr.map(v => -v);
+    const n1 = inside ? n : 1, n2 = inside ? 1 : n, ci = -dotp(nr, d), si = Math.sqrt(Math.max(0, 1 - ci * ci)), stt = n1 / n2 * si;
+    const refl = addv(d, nr, 2 * ci);
+    if (stt >= 1 - 1e-12) {
+      hits.push({ q, nr, i: Math.asin(si), tir: true, n1, n2 });
+      d = refl; p = q; continue;
+    }
+    const ct = Math.sqrt(1 - stt * stt), R = fresnel(n1, n2, ci, ct), eta = n1 / n2;
+    hits.push({ q, nr, i: Math.asin(si), r: Math.asin(stt), tir: false, n1, n2, R });
+    const hw = nearest(q, refl, edges);
+    weak.push({ a: q, b: addv(q, refl, hw ? hw.t : 12), I: I * R });
+    d = addv(d.map(v => v * eta), nr, eta * ci - ct);
+    I *= 1 - R; inside = !inside; p = q;
+  }
+  return { segs, weak, hits, Lin };
+}
+
+function scene() {
+  const n = st.n;
+  if (st.mode === 'semi') {
+    const R = 1, edges = [{ type: 'seg', a: [R, 0], b: [-R, 0] }, { type: 'arc', c: [0, 0], r: R, a0: 0, a1: Math.PI }];
+    let p0, d0;
+    if (st.entry === 'center') { const i = st.i * DEG; d0 = [Math.sin(i), -Math.cos(i)]; p0 = addv([0, 0], d0, -1.8); }
+    else { p0 = [st.s * R, -0.9]; d0 = [0, 1]; }
+    return { edges, poly: 'semi', R, ...trace(p0, d0, edges, n) };
+  }
+  if (st.mode === 'block') {
+    const w = 2.2, d = st.bd, P = [[-w, 0], [w, 0], [w, -d], [-w, -d]];
+    const edges = P.map((a, k) => ({ type: 'seg', a, b: P[(k + 1) % 4] }));
+    const th = st.th1 * DEG, d0 = [Math.sin(th), -Math.cos(th)], hp = [-0.9, 0];
+    return { edges, poly: P, ...trace(addv(hp, d0, -1.3), d0, edges, n) };
+  }
+  const A = st.A * DEG, Ls = 2.2, h = Ls * Math.cos(A / 2), b = Ls * Math.sin(A / 2), y0 = -h * 0.45;
+  const P = [[-b, y0], [b, y0], [0, y0 + h]];
+  const edges = P.map((a, k) => ({ type: 'seg', a, b: P[(k + 1) % 3] }));
+  const M = [(P[0][0] + P[2][0]) / 2, (P[0][1] + P[2][1]) / 2], ang = -A / 2 + st.pi * DEG, d0 = [Math.cos(ang), Math.sin(ang)];
+  return { edges, poly: P, M, ...trace(addv(M, d0, -1.6), d0, edges, n) };
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+function wl2rgb(nm) {
+  let r = 0, g = 0, b = 0;
+  if (nm < 440) { r = -(nm - 440) / 60; b = 1; } else if (nm < 490) { g = (nm - 440) / 50; b = 1; }
+  else if (nm < 510) { g = 1; b = -(nm - 510) / 20; } else if (nm < 580) { r = (nm - 510) / 70; g = 1; }
+  else if (nm < 645) { r = 1; g = -(nm - 645) / 65; } else r = 1;
+  const f = nm < 420 ? 0.3 + 0.7 * (nm - 380) / 40 : nm > 680 ? 0.3 + 0.7 * (750 - nm) / 70 : 1;
+  return [r * f, g * f, b * f];
+}
+function arcAngle(c, p, a1, a2, r, color, label) {
+  let s = Math.atan2(a1[1], a1[0]), e = Math.atan2(a2[1], a2[0]);
+  let dlt = e - s; while (dlt > Math.PI) dlt -= 2 * Math.PI; while (dlt < -Math.PI) dlt += 2 * Math.PI;
+  c.beginPath(); c.arc(p[0], p[1], r, s, s + dlt, dlt < 0); c.strokeStyle = color; c.lineWidth = 1.5; c.stroke();
+  if (label) { const m = s + dlt / 2; text(c, label, p[0] + Math.cos(m) * (r + 16), p[1] + Math.sin(m) * (r + 16), color, { size: 12, bold: true }); }
+}
+function drawGeo(c, W, H) {
+  const sc = scene(), k = Math.min(W / 6.2, H / 3.4), ox = W / 2, oy = st.mode === 'semi' ? H * 0.55 : st.mode === 'block' ? H * 0.38 : H * 0.5;
+  const S = p => [ox + p[0] * k, oy - p[1] * k];
+  // 玻璃
+  c.fillStyle = 'rgba(147,197,253,.35)'; c.strokeStyle = '#60a5fa'; c.lineWidth = 2;
+  c.beginPath();
+  if (sc.poly === 'semi') { const o = S([0, 0]); c.arc(o[0], o[1], sc.R * k, Math.PI, 0); c.closePath(); }
+  else sc.poly.forEach((p, i) => { const q = S(p); i ? c.lineTo(...q) : c.moveTo(...q); }), c.closePath();
+  c.fill(); c.stroke();
+  text(c, `n = ${fmt(st.n, 2)}`, ...S(st.mode === 'semi' ? [0.55, 0.25] : st.mode === 'block' ? [1.6, -st.bd / 2] : [0, sc.poly[0][1] + 0.3]), '#1d4ed8', { bold: true, size: 13 });
+  if (st.mode === 'semi') { dot(c, ...S([0, 0]), 3.5, '#1d4ed8', null); text(c, 'O', ...addv(S([0, 0]), [10, 14]), '#1d4ed8', { bold: true, size: 12 }); }
+  // 光线
+  sc.weak.forEach(s => { if (s.I < 0.004) return; const a = S(s.a), b = S(s.b); line(c, a[0], a[1], b[0], b[1], `rgba(220,38,38,${Math.min(0.9, 0.12 + s.I * 2)})`, 1.4); });
+  sc.segs.forEach((s, j) => {
+    const a = S(s.a), b = S(s.b);
+    line(c, a[0], a[1], b[0], b[1], `rgba(220,38,38,${0.35 + 0.65 * s.I})`, 2.8);
+    const L = Math.min(Math.hypot(b[0] - a[0], b[1] - a[1]), 260);
+    if (L > 40) { const ux = (b[0] - a[0]) / Math.hypot(b[0] - a[0], b[1] - a[1]), uy = (b[1] - a[1]) / Math.hypot(b[0] - a[0], b[1] - a[1]); Lab.head(c, a[0] + ux * L * 0.55, a[1] + uy * L * 0.55, ux, uy, 9, '#dc2626'); }
+  });
+  // 法线与角度（前三个界面）
+  sc.hits.slice(0, 3).forEach((h, j) => {
+    const q = S(h.q), nr = [h.nr[0], -h.nr[1]];
+    line(c, q[0] - nr[0] * 60, q[1] - nr[1] * 60, q[0] + nr[0] * 60, q[1] + nr[1] * 60, '#6b7280', 1, [5, 4]);
+    const seg = sc.segs[j], dIn = sub(S(seg.b), S(seg.a)), din = dIn.map(v => v / Math.hypot(...dIn));
+    if (h.i * 180 / Math.PI > 0.5) arcAngle(c, q, [nr[0], nr[1]], [-din[0], -din[1]], 26, '#111827', `${fmt(h.i / DEG, 1)}°`);
+    const nx = sc.segs[j + 1];
+    if (nx) {
+      const dO = sub(S(nx.b), S(nx.a)), dout = dO.map(v => v / Math.hypot(...dO));
+      const ang = h.tir ? Math.acos(Math.max(-1, Math.min(1, -(dout[0] * nr[0] + dout[1] * nr[1])))) : h.r;
+      if (ang / DEG > 0.5) arcAngle(c, q, h.tir ? [nr[0], nr[1]] : [-nr[0], -nr[1]], dout, 40, h.tir ? '#b45309' : '#7c3aed', h.tir ? '全反射' : `${fmt(h.r / DEG, 1)}°`);
+    }
+  });
+  if (st.mode === 'block' && sc.hits.length >= 2 && !sc.hits[0].tir) {
+    // 入射光的延长线与侧移
+    const h0 = sc.hits[0], d0 = sub(sc.segs[0].b, sc.segs[0].a).map(v => v / Math.hypot(...sub(sc.segs[0].b, sc.segs[0].a)));
+    const ext = addv(h0.q, d0, 2.4), a = S(h0.q), b = S(ext);
+    line(c, a[0], a[1], b[0], b[1], '#9ca3af', 1.2, [6, 4]);
+    text(c, '入射光延长线', b[0] + 6, b[1], '#6b7280', { size: 12, align: 'left' });
+  }
+  const tir = sc.hits.find(h => h.tir);
+  if (tir) text(c, '发生全反射', 14, 22, '#b45309', { bold: true, size: 14, align: 'left' });
+  return sc;
+}
+
+function drawSlit(c, W, H) {
+  const ys = H * 0.3, x0 = 50, xs = W * 0.22, xd = W * 0.42, xscr = W * 0.86, col = st.white ? '#111827' : `rgb(${wl2rgb(st.lam).map(v => Math.round(v * 255)).join(',')})`;
+  dot(c, x0, ys, 9, st.white ? '#fde68a' : col, '#111827');
+  text(c, '光源', x0, ys + 24, '#374151', { size: 12 });
+  line(c, xs, ys - 90, xs, ys - 5, '#111827', 4); line(c, xs, ys + 5, xs, ys + 90, '#111827', 4);
+  text(c, '单缝', xs, ys + 106, '#374151', { size: 12 });
+  const gap = 10 + st.sd * 30;
+  line(c, xd, ys - 90, xd, ys - gap / 2 - 4, '#111827', 4); line(c, xd, ys - gap / 2 + 4, xd, ys + gap / 2 - 4, '#111827', 4); line(c, xd, ys + gap / 2 + 4, xd, ys + 90, '#111827', 4);
+  text(c, '双缝', xd, ys + 106, '#374151', { size: 12 });
+  line(c, xscr, ys - 100, xscr, ys + 100, '#374151', 5);
+  text(c, '光屏', xscr, ys + 116, '#374151', { size: 12 });
+  // 波面示意
+  for (let r = 14; r < xd - xs; r += 18) { c.beginPath(); c.arc(xs, ys, r, -0.5, 0.5); c.strokeStyle = 'rgba(37,99,235,.25)'; c.lineWidth = 1; c.stroke(); }
+  for (const yy of [ys - gap / 2, ys + gap / 2]) for (let r = 14; r < xscr - xd - 10; r += 22) { c.beginPath(); c.arc(xd, yy, r, -0.4, 0.4); c.strokeStyle = 'rgba(37,99,235,.13)'; c.stroke(); }
+  // 尺寸标注
+  vec(c, xd + 26, ys + 132, xscr - 4, ys + 132, '#6b7280', 1.2, 6); vec(c, xscr - 26, ys + 132, xd + 4, ys + 132, '#6b7280', 1.2, 6);
+  text(c, `l = ${fmt(st.sL, 1)} m`, (xd + xscr) / 2, ys + 120, '#374151', { size: 12, bold: true });
+  text(c, `d = ${fmt(st.sd, 2)} mm`, xd - 14, ys - 104, '#374151', { size: 12, bold: true });
+  // 屏上图样（正面看）
+  const top = H * 0.62, hh = H * 0.24, L = 40, R = W - 40, Ymax = 15;   // 屏上 ±15 mm
+  text(c, '从正面看光屏上的条纹（单位 mm）', W / 2, top - 14, '#374151', { size: 13, bold: true });
+  for (let px = L; px <= R; px++) {
+    const y = (px - (L + R) / 2) / ((R - L) / 2) * Ymax;
+    const [r, g, b] = pattern(y);
+    c.fillStyle = `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+    c.fillRect(px, top, 1.2, hh);
+  }
+  for (let y = -Ymax; y <= Ymax; y += 5) { const px = (L + R) / 2 + y / Ymax * (R - L) / 2; line(c, px, top + hh, px, top + hh + 6, '#6b7280', 1); text(c, `${y}`, px, top + hh + 16, '#6b7280', { size: 11, halo: false }); }
+  if (!st.white) {
+    const dx = dxMM(st.lam), cx = (L + R) / 2, sx = (R - L) / 2 / Ymax;
+    vec(c, cx + 4, top - 30 + 0, cx + dx * sx - 2, top - 30, '#f59e0b', 1.5, 6);
+    text(c, `Δx = ${fmt(dx, 2)} mm`, cx + dx * sx + 8, top - 30, '#b45309', { size: 12, bold: true, align: 'left' });
+  }
+}
+const dxMM = nm => st.sL * nm * 1e-9 / (st.sd * 1e-3) * 1e3;
+function intensity(y, nm) {
+  const beta = Math.PI * y / dxMM(nm), a = 0.015, env = Math.PI * a * 1e-3 * (y * 1e-3) / (nm * 1e-9 * st.sL);
+  const sinc = Math.abs(env) < 1e-6 ? 1 : (Math.sin(env) / env) ** 2;
+  return Math.cos(beta) ** 2 * sinc;
+}
+function pattern(y) {
+  if (!st.white) { const I = intensity(y, st.lam), c = wl2rgb(st.lam); return c.map(v => v * I); }
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let nm = 400; nm <= 700; nm += 10) { const I = intensity(y, nm), cc = wl2rgb(nm); r += cc[0] * I; g += cc[1] * I; b += cc[2] * I; n++; }
+  const k = 2.6 / n; return [Math.min(1, r * k), Math.min(1, g * k), Math.min(1, b * k)];
+}
+
+let lastScene = null;
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  if (st.mode === 'slit') { drawSlit(c, W, H); lastScene = null; }
+  else lastScene = drawGeo(c, W, H);
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2, n = st.n, Cdeg = Math.asin(1 / n) / DEG;
+  chartView.begin();
+  const curve = (f, a, b, N = 300) => { const out = []; for (let j = 0; j <= N; j++) { const x = a + (b - a) * j / N, y = f(x); if (Number.isFinite(y)) out.push([x, y]); } return out; };
+  if (st.mode === 'semi') {
+    const cur = st.entry === 'center' ? st.i : Math.asin(st.s) / DEG;
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 90, ymin: 0, ymax: 95, xlabel: '玻璃内的入射角 / °', ylabel: '折射角 / °', legendX: 400,
+      series: [{ pts: curve(i => { const s = n * Math.sin(i * DEG); return s < 1 ? Math.asin(s) / DEG : NaN; }, 0, 90), color: '#7c3aed' }],
+      vlines: [{ x: Cdeg, color: '#b45309', label: `C = ${fmt(Cdeg, 1)}°` }], hlines: [{ y: 90, color: '#9ca3af' }],
+      points: cur < Cdeg ? [{ x: cur, y: Math.asin(n * Math.sin(cur * DEG)) / DEG, color: '#7c3aed' }] : [],
+    });
+    const Rf = i => { const ci = Math.cos(i * DEG), s = n * Math.sin(i * DEG); if (s >= 1) return 1; return fresnel(n, 1, ci, Math.sqrt(1 - s * s)); };
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 90, ymin: 0, ymax: 1.1, xlabel: '入射角 / °', ylabel: '反射光能量占比', legendX: 400,
+      series: [{ pts: curve(Rf, 0, 90, 600), color: '#dc2626' }],
+      vlines: [{ x: Cdeg, color: '#b45309', label: '入射角 ≥ C：折射光消失' }],
+      points: [{ x: cur, y: Rf(cur), color: '#dc2626' }],
+    });
+  } else if (st.mode === 'block') {
+    const shift = th => { const t = th * DEG, r = Math.asin(Math.sin(t) / n); return st.bd * Math.sin(t - r) / Math.cos(r); };
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 90, ymin: 0, ymax: st.bd * 1.1, xlabel: '入射角 θ₁ / °', ylabel: '侧移量 Δ / m', legendX: 400,
+      series: [{ pts: curve(shift, 0, 89.9), color: '#dc2626' }], hlines: [{ y: st.bd, color: '#9ca3af', label: '厚度 d' }],
+      points: [{ x: st.th1, y: shift(st.th1), color: '#dc2626' }],
+    });
+    const time = th => { const r = Math.asin(Math.sin(th * DEG) / n); return st.bd / Math.cos(r) * n / C_LIGHT * 1e9; };
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 90, ymin: 0, ymax: time(89.9) * 1.15, xlabel: '入射角 θ₁ / °', ylabel: '在玻璃中的时间 t / ns', legendX: 400,
+      series: [{ pts: curve(time, 0, 89.9), color: '#2563eb' }], points: [{ x: st.th1, y: time(st.th1), color: '#2563eb' }],
+    });
+  } else if (st.mode === 'prism') {
+    const A = st.A * DEG;
+    const dev = i => { const r1 = Math.asin(Math.sin(i * DEG) / n), i2 = A - r1; if (i2 < -Math.PI / 2 || n * Math.sin(i2) >= 1) return NaN; return (i * DEG + Math.asin(n * Math.sin(i2)) - A) / DEG; };
+    const pts = curve(dev, 0, 89.9, 600), ys = pts.map(p => p[1]);
+    const im = Math.asin(Math.min(1, n * Math.sin(A / 2))) / DEG, dm = dev(im);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 90, ymin: 0, ymax: Math.max(10, ...(ys.length ? ys : [10])) * 1.15, xlabel: '入射角 i / °', ylabel: '偏向角 δ / °', legendX: 400,
+      series: [{ pts, color: '#dc2626' }],
+      vlines: Number.isFinite(dm) ? [{ x: im, color: '#16a34a', label: `最小偏向角 ${fmt(dm, 1)}°` }] : [],
+      points: Number.isFinite(dev(st.pi)) ? [{ x: st.pi, y: dev(st.pi), color: '#dc2626' }] : [],
+    });
+    const i2 = i => (A - Math.asin(Math.sin(i * DEG) / n)) / DEG;
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 90, ymin: Math.min(0, i2(89.9)) - 2, ymax: Math.max(Cdeg, i2(0)) * 1.15, xlabel: '入射角 i / °', ylabel: '第二个面上的入射角 / °', legendX: 400,
+      series: [{ pts: curve(i2, 0, 89.9), color: '#7c3aed' }],
+      hlines: [{ y: Cdeg, color: '#b45309', label: `C = ${fmt(Cdeg, 1)}°（以上全反射）` }],
+      points: [{ x: st.pi, y: i2(st.pi), color: '#7c3aed' }],
+    });
+  } else {
+    const Ymax = 15, pts = curve(y => st.white ? (pattern(y).reduce((a, b) => a + b, 0) / 3) : intensity(y, st.lam), -Ymax, Ymax, 900);
+    Lab.plot(c, { x: 0, y: 0, w: W, h: H }, {
+      xmin: -Ymax, xmax: Ymax, ymin: 0, ymax: 1.15, xlabel: '屏上位置 y / mm', ylabel: '光强（相对值）', legendX: 400, xticks: 6,
+      series: [{ pts, color: st.white ? '#111827' : `rgb(${wl2rgb(st.lam).map(v => Math.round(v * 200)).join(',')})` }],
+      vlines: st.white ? [] : [-2, -1, 1, 2].map(m => ({ x: m * dxMM(st.lam), color: '#9ca3af', label: '' })),
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  semi: [
+    '光沿半径方向射入或射出圆弧面时不改变方向；垂直平面射入时也不改变方向。',
+    '光从玻璃射向空气：入射角增大，折射光越来越弱、反射光越来越强；入射角达到临界角 C 时折射光完全消失。',
+    '垂直平面射入、到圆心距离为 x 的光，在圆弧面上的入射角满足 sin i = x/R；恰好全反射时 x = R/n。',
+  ],
+  block: [
+    '平行玻璃砖：出射光与入射光平行，只发生侧移；入射角越大、玻璃越厚，侧移越大。',
+    '光在玻璃中的速度 v = c/n，路程 L = d/cosθ₂，时间 t = L/v = nd/(c·cosθ₂)。',
+    '光从空气进入玻璃不可能发生全反射；从平行玻璃砖下表面射出时也不会全反射（入射角等于上表面的折射角，小于 C）。',
+  ],
+  prism: [
+    '三棱镜使光线向底边偏折；第二个面上的入射角 i₂ = A − r₁。',
+    '入射光与出射光关于棱镜对称时（r₁ = r₂ = A/2）偏向角最小：n = sin[(A + δmin)/2] / sin(A/2)。',
+    '入射角太小时，第二个面上的入射角 A − r₁ 可能大于 C，在第二个面发生全反射。',
+    '不同色光折射率不同（紫光最大），所以白光经三棱镜发生色散，紫光偏折最厉害。',
+  ],
+  slit: [
+    '相邻亮（暗）条纹间距 Δx = lλ/d：波长越长、缝到屏越远、双缝越近，条纹越宽。',
+    '屏上某点到两缝的路程差 Δr = nλ 处是亮条纹，Δr = (2n + 1)λ/2 处是暗条纹。',
+    '测波长：数出 n 条亮条纹（n − 1 个间距）的总宽度 a，Δx = a/(n − 1)，λ = dΔx/l。',
+    '白光做双缝干涉：中央是白色亮条纹，两侧是彩色条纹（红光条纹最宽，在外侧）。',
+  ],
+};
+function updatePanel() {
+  ['semi', 'block', 'prism', 'slit'].forEach(m => { $(m + 'Panel').style.display = st.mode === m ? '' : 'none'; });
+  $('glassPanel').style.display = st.mode === 'slit' ? 'none' : '';
+  $('iRow').style.display = st.entry === 'center' ? '' : 'none';
+  $('sRow').style.display = st.entry === 'offset' ? '' : 'none';
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  const n = st.n, C = Math.asin(1 / n) / DEG;
+  let rows = '', html = '';
+  if (st.mode !== 'slit') rows += `<tr><td>折射率 n</td><td>${fmt(n, 3)}</td></tr><tr><td>临界角 C（sin C = 1/n）</td><td>${fmt(C, 2)}°</td></tr><tr><td>光在玻璃中的速度 v = c/n</td><td>${fmt(3 / n, 3)}×10⁸ m/s</td></tr>`;
+  const sc = lastScene;
+  if (st.mode === 'semi') {
+    $('hint').textContent = '拖滑块改变入射角；细线是反射光，亮度表示能量';
+    const i = st.entry === 'center' ? st.i : Math.asin(st.s) / DEG;
+    html = `<div class="node"><span class="f">${st.entry === 'center' ? '光沿半径射入，在圆弧面上不偏折，直达圆心 O' : `光垂直平面射入不偏折，射到圆弧面：sin i = x/R = ${fmt(st.s, 2)}`}</span><br><span class="v">玻璃内的入射角 i = ${fmt(i, 2)}°</span></div>
+      <div class="link">↓ 光从玻璃射向空气：先算临界角</div>
+      <div class="node"><span class="f">sin C = 1/n</span> = 1/${fmt(n, 3)} = ${fmt(1 / n, 3)} → <span class="v">C = ${fmt(C, 2)}°</span></div>
+      <div class="link">↓ 比较 i 与 C</div>`;
+    if (i >= C - 1e-9) html += `<div class="node"><span class="v">i ≥ C：发生全反射，没有折射光</span>${st.entry === 'offset' ? `<br><span class="n">恰好全反射时 x = R/n = ${fmt(1 / n, 3)}R</span>` : ''}</div>`;
+    else { const r = Math.asin(n * Math.sin(i * DEG)) / DEG; html += `<div class="node"><span class="f">i < C：折射，n = sin r / sin i</span><br><span class="v">sin r = ${fmt(n, 3)} × ${fmt(Math.sin(i * DEG), 3)} = ${fmt(n * Math.sin(i * DEG), 3)} → r = ${fmt(r, 2)}°</span><br><span class="n">同时有部分反射光，能量约占 ${fmt(fresnel(n, 1, Math.cos(i * DEG), Math.cos(r * DEG)) * 100, 1)}%</span></div>`; }
+  } else if (st.mode === 'block') {
+    $('hint').textContent = '虚线是入射光的延长线：出射光与它平行，相距为侧移量';
+    const t = st.th1 * DEG, r = Math.asin(Math.sin(t) / n), L = st.bd / Math.cos(r), shift = st.bd * Math.sin(t - r) / Math.cos(r), time = L * n / C_LIGHT;
+    rows += `<tr><td>折射角 θ₂</td><td>${fmt(r / DEG, 2)}°</td></tr><tr><td>侧移量 Δ</td><td>${fmt(shift, 3)} m</td></tr><tr><td>玻璃中的路程 L</td><td>${fmt(L, 3)} m</td></tr>`;
+    html = `<div class="node"><span class="f">上表面：n = sinθ₁ / sinθ₂</span><br><span class="v">sinθ₂ = ${fmt(Math.sin(t), 3)} ÷ ${fmt(n, 3)} = ${fmt(Math.sin(r), 3)} → θ₂ = ${fmt(r / DEG, 2)}°</span></div>
+      <div class="link">↓ 下表面入射角 = θ₂ < C，光一定能射出，出射角 = θ₁</div>
+      <div class="node"><span class="f">出射光 ∥ 入射光</span>；侧移 Δ = d·sin(θ₁ − θ₂)/cosθ₂ = <span class="v">${fmt(shift, 3)} m</span></div>
+      <div class="link">↓ 光在玻璃中的时间</div>
+      <div class="node"><span class="f">L = d/cosθ₂ = ${fmt(L, 3)} m，v = c/n</span><br><span class="v">t = L/v = ${fmt(time * 1e9, 3)} ns</span></div>`;
+  } else if (st.mode === 'prism') {
+    $('hint').textContent = '改变入射角，看偏向角怎么变，以及第二个面何时全反射';
+    const A = st.A, r1 = Math.asin(Math.sin(st.pi * DEG) / n) / DEG, i2 = A - r1;
+    html = `<div class="node"><span class="f">第一个面：sin r₁ = sin i / n</span><br><span class="v">r₁ = ${fmt(r1, 2)}°</span></div>
+      <div class="link">↓ 几何关系</div>
+      <div class="node"><span class="f">第二个面上的入射角 i₂ = A − r₁</span> = ${A} − ${fmt(r1, 2)} = <span class="v">${fmt(i2, 2)}°</span></div>
+      <div class="link">↓ 与临界角 C = ${fmt(C, 2)}° 比较</div>`;
+    if (i2 >= C) html += `<div class="node"><span class="v">i₂ ≥ C：在第二个面发生全反射</span><br><span class="n">要让光从第二个面射出，入射角 i 至少为 ${fmt(Math.asin(Math.min(1, n * Math.sin((A - C) * DEG))) / DEG, 2)}°（r₁ ≥ A − C）。</span></div>`;
+    else {
+      const e = Math.asin(n * Math.sin(i2 * DEG)) / DEG, dlt = st.pi + e - A, dm = 2 * Math.asin(Math.min(1, n * Math.sin(A / 2 * DEG))) / DEG - A;
+      rows += `<tr><td>出射角 e</td><td>${fmt(e, 2)}°</td></tr><tr><td>偏向角 δ</td><td>${fmt(dlt, 2)}°</td></tr>`;
+      html += `<div class="node"><span class="f">i₂ < C：折射射出，sin e = n·sin i₂</span> → <span class="v">e = ${fmt(e, 2)}°</span><br><span class="f">偏向角 δ = i + e − A</span> = <span class="v">${fmt(dlt, 2)}°</span></div>
+        <div class="link">↓ 对称光路时偏向角最小</div>
+        <div class="node"><span class="f">n = sin[(A + δmin)/2] / sin(A/2)</span><br><span class="v">δmin = ${fmt(dm, 2)}°，此时 i = ${fmt((A + dm) / 2, 2)}°</span></div>`;
+    }
+  } else {
+    $('hint').textContent = '改变波长、缝距和屏距，看条纹间距';
+    const dx = dxMM(st.lam);
+    rows = `<tr><td>波长 λ</td><td>${st.lam} nm</td></tr><tr><td>相邻亮条纹间距 Δx</td><td>${st.white ? '—' : fmt(dx, 3) + ' mm'}</td></tr>`;
+    html = `<div class="node"><span class="f">Δx = lλ/d</span> = ${fmt(st.sL, 1)} × ${st.lam}×10⁻⁹ ÷ (${fmt(st.sd, 2)}×10⁻³) = <span class="v">${fmt(dx, 3)} mm</span></div>
+      <div class="link">↓ 反过来测波长</div>
+      <div class="node"><span class="f">λ = dΔx / l</span><br><span class="n">例：7 条亮条纹之间（6 个间距）总宽 ${fmt(6 * dx, 2)} mm → Δx = ${fmt(dx, 3)} mm → λ = ${st.lam} nm</span></div>
+      <div class="link">↓ 屏上 P 点：路程差决定明暗</div>
+      <div class="node"><span class="n">第 k 级亮条纹在 y = kΔx 处，对应路程差 kλ；暗条纹在 (k + ½)Δx 处。</span></div>`;
+    if (st.white) html += '<div class="node"><span class="n">白光：各色光的中央亮纹都在 y = 0，叠加成白色；向外各色条纹错开，红光在外侧。</span></div>';
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+const RNG = { n: v => fmt(v, 2), i: v => `${fmt(v, 1)}°`, s: v => `${fmt(v, 2)}R`, th1: v => `${v}°`, bd: v => `${fmt(v, 1)} m`, A: v => `${v}°`, pi: v => `${fmt(v, 1)}°`, lam: v => `${v} nm`, sd: v => `${fmt(v, 2)} mm`, sL: v => `${fmt(v, 1)} m` };
+Object.keys(RNG).forEach(k => Lab.range(k, RNG[k], v => { st[k] = v; render(); }));
+Lab.radios('mode', m => { st.mode = m; render(); });
+Lab.radios('entry', m => { st.entry = m; render(); });
+$('white').addEventListener('change', () => { st.white = $('white').checked; render(); });
+
+const PRESETS = [
+  ['半圆砖：恰好全反射', { mode: 'semi', entry: 'center', n: 1.5, i: Math.asin(1 / 1.5) / DEG }],
+  ['垂直平面射入（n = √2）', { mode: 'semi', entry: 'offset', n: Math.SQRT2, s: 0.75 }],
+  ['平行玻璃砖：侧移与时间', { mode: 'block', n: Math.sqrt(3), th1: 60, bd: 1 }],
+  ['三棱镜：最小偏向角', { mode: 'prism', n: 1.5, A: 60, pi: Math.asin(0.75) / DEG }],
+  ['三棱镜：第二面全反射', { mode: 'prism', n: 1.5, A: 60, pi: 20 }],
+  ['双缝干涉：Δx = lλ/d', { mode: 'slit', lam: 600, sd: 0.2, sL: 1, white: false }],
+  ['白光的双缝干涉', { mode: 'slit', lam: 600, sd: 0.2, sL: 1, white: true }],
+];
+PRESETS.forEach(([name, o]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, o);
+    Lab.setRadio('mode', st.mode); Lab.setRadio('entry', st.entry); $('white').checked = st.white;
+    Object.keys(RNG).forEach(k => Lab.setRange(k, st[k]));
+    render();
+  });
+  $('presets').appendChild(btn);
+});
+render();
+</script>
+</body>
+</html>

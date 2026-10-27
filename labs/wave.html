@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>机械波 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>机械波：图像、多解与干涉</b><span class="crumb">选择性必修第一册 · 第三章 机械波</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">波传播的是<b>振动形式和能量</b>，质点只在平衡位置附近上下振动，不随波迁移。v = λ/T = λf。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="graph" checked>波动图像与振动图像</label>
+      <label class="chk"><input type="radio" name="mode" value="multi">两时刻波形（多解）</label>
+      <label class="chk"><input type="radio" name="mode" value="interf">波的干涉</label>
+    </div>
+
+    <div id="graphPanel">
+      <h2>波</h2>
+      <div class="row">振幅 A <input type="range" id="A" min="2" max="10" step="1" value="5"><span class="val" id="Av"></span></div>
+      <div class="row">波长 λ <input type="range" id="lam" min="2" max="8" step="0.5" value="4"><span class="val" id="lamv"></span></div>
+      <div class="row">波速 v <input type="range" id="v" min="1" max="10" step="0.5" value="2"><span class="val" id="vv"></span></div>
+      <div class="row">
+        <label class="chk"><input type="radio" name="dir" value="1" checked>沿 +x 传播</label>
+        <label class="chk"><input type="radio" name="dir" value="-1">沿 −x 传播</label>
+      </div>
+      <div class="row"><label class="chk"><input type="checkbox" id="front">波从波源开始传出（看起振方向）</label></div>
+      <div class="row" id="startRow">
+        <label class="chk"><input type="radio" name="start" value="1" checked>波源先向上振</label>
+        <label class="chk"><input type="radio" name="start" value="-1">波源先向下振</label>
+      </div>
+      <div class="row"><label class="chk"><input type="checkbox" id="ghost" checked>显示稍后的波形（微平移法）</label></div>
+      <h2>质点</h2>
+      <div class="row">P 的位置 x_P <input type="range" id="xP" min="0" max="12" step="0.25" value="3"><span class="val" id="xPv"></span></div>
+      <div class="row">Q 的位置 x_Q <input type="range" id="xQ" min="0" max="12" step="0.25" value="5"><span class="val" id="xQv"></span></div>
+    </div>
+
+    <div id="multiPanel">
+      <h2>已知条件</h2>
+      <div class="row">波长 λ <input type="range" id="mlam" min="2" max="8" step="1" value="4"><span class="val" id="mlamv"></span></div>
+      <div class="row">实线 → 虚线右移 Δx <input type="range" id="mdx" min="0.5" max="7.5" step="0.5" value="1"><span class="val" id="mdxv"></span></div>
+      <div class="row">时间间隔 Δt <input type="range" id="mdt" min="0.1" max="2" step="0.1" value="0.5"><span class="val" id="mdtv"></span></div>
+      <h2>选一组解来播放</h2>
+      <div class="row">
+        <label class="chk"><input type="radio" name="mdir" value="1" checked>沿 +x</label>
+        <label class="chk"><input type="radio" name="mdir" value="-1">沿 −x</label>
+      </div>
+      <div class="row">n <input type="range" id="mn" min="0" max="3" step="1" value="0"><span class="val" id="mnv"></span></div>
+    </div>
+
+    <div id="interfPanel">
+      <h2>两个波源</h2>
+      <div class="row">波长 λ <input type="range" id="ilam" min="0.6" max="3" step="0.1" value="1.5"><span class="val" id="ilamv"></span></div>
+      <div class="row">波源间距 d <input type="range" id="id" min="1" max="8" step="0.5" value="4.5"><span class="val" id="idv"></span></div>
+      <div class="row">
+        <label class="chk"><input type="radio" name="phase" value="0" checked>同相</label>
+        <label class="chk"><input type="radio" name="phase" value="1">反相</label>
+      </div>
+      <div class="row"><label class="chk"><input type="checkbox" id="amp">显示振幅分布（不看瞬时波形）</label></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="slow">慢放 0.25×</button></div>
+    <div class="row" id="ttRow">时刻 t <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2 id="tblTitle">当前时刻</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const XL = 12, TAU = Math.PI * 2;
+const st = {
+  mode: 'graph', t: 0, speed: 1,
+  A: 5, lam: 4, v: 2, dir: 1, front: false, start: 1, ghost: true, xP: 3, xQ: 5,
+  mlam: 4, mdx: 1, mdt: 0.5, mdir: 1, mn: 0,
+  ilam: 1.5, id: 4.5, phase: 0, amp: false, probe: [2.2, 2.6],
+};
+
+// ---------- 波动图像 ----------
+const T = () => st.lam / st.v;
+function yAt(x, t) {
+  const w = TAU / T();
+  if (!st.front) return st.A * Math.sin(w * (t - st.dir * x / st.v));
+  const x0 = st.dir > 0 ? 0 : XL, tau = t - Math.abs(x - x0) / st.v;
+  return tau >= 0 ? st.start * st.A * Math.sin(w * tau) : 0;
+}
+function velAt(x, t) { const h = 1e-4; return (yAt(x, t + h) - yAt(x, t - h)) / (2 * h); }
+function arrive(x) { return st.front ? Math.abs(x - (st.dir > 0 ? 0 : XL)) / st.v : 0; }
+function graphTend() { return (st.front ? XL / st.v : 0) + 2 * T(); }
+function pathLen(x, t) {
+  let s = 0, prev = yAt(x, 0);
+  const n = Math.max(200, Math.ceil(t / T() * 200));
+  for (let i = 1; i <= n; i++) { const y = yAt(x, t * i / n); s += Math.abs(y - prev); prev = y; }
+  return s;
+}
+
+// ---------- 多解 ----------
+function shiftFor(dir, n) { return dir > 0 ? n * st.mlam + st.mdx : n * st.mlam + (st.mlam - st.mdx); }
+function multiRows() {
+  const rows = [];
+  for (let n = 0; n <= 3; n++) for (const dir of [1, -1]) {
+    const s = shiftFor(dir, n), v = s / st.mdt;
+    rows.push({ n, dir, s, v, T: st.mlam / v });
+  }
+  return rows;
+}
+
+// ---------- 干涉 ----------
+const SC = () => Math.min(view.W / 14, view.H / 8);   // 像素 / 米
+function srcs() { return [[-st.id / 2, 0], [st.id / 2, 0]]; }
+function interfY(x, y, t) {
+  const [s1, s2] = srcs(), k = TAU / st.ilam, w = TAU;   // 周期取 1 s
+  const r1 = Math.hypot(x - s1[0], y - s1[1]), r2 = Math.hypot(x - s2[0], y - s2[1]);
+  return Math.cos(w * t - k * r1) + Math.cos(w * t - k * r2 + st.phase * Math.PI);
+}
+function ampAt(x, y) {
+  const [s1, s2] = srcs(), dr = Math.hypot(x - s1[0], y - s1[1]) - Math.hypot(x - s2[0], y - s2[1]);
+  return 2 * Math.abs(Math.cos(Math.PI * dr / st.ilam - st.phase * Math.PI / 2));
+}
+function strongCount() {
+  const r = st.id / st.ilam;
+  if (st.phase === 0) { const m = Math.ceil(r - 1e-9) - 1; return 2 * m + 1; }
+  let c = 0; for (let n = 0; (n + 0.5) < r - 1e-9; n++) c++;
+  return 2 * c;
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let off = null, geo = null;
+
+function drawGraph(c, W, H) {
+  const L = 60, R = W - 30, X = x => L + x / XL * (R - L), gy = H * 0.48, ky = Math.min(H * 0.32, 150) / 10, Y = y => gy - y * ky;
+  line(c, L - 10, gy, R + 10, gy, '#9ca3af', 1.2);
+  line(c, L, gy - 10 * ky - 10, L, gy + 10 * ky + 10, '#9ca3af', 1.2);
+  text(c, 'y / cm', L + 6, gy - 10 * ky - 16, '#374151', { size: 12, bold: true, align: 'left' });
+  text(c, 'x / m', R + 6, gy + 30, '#374151', { size: 12, align: 'right' });
+  for (let x = 0; x <= XL; x += 1) { line(c, X(x), gy, X(x), gy + 5, '#9ca3af', 1); text(c, `${x}`, X(x), gy + 14, '#9ca3af', { size: 10, halo: false }); }
+  for (const yy of [st.A, -st.A]) { line(c, L, Y(yy), R, Y(yy), '#f3f4f6', 1); text(c, `${fmt(yy, 0)}`, L - 6, Y(yy), '#9ca3af', { size: 10, align: 'right', halo: false }); }
+  const t = st.t, curve = (tt, color, width, dash) => {
+    c.save(); if (dash) c.setLineDash(dash);
+    c.beginPath();
+    for (let i = 0; i <= 480; i++) { const x = XL * i / 480; const p = [X(x), Y(yAt(x, tt))]; i ? c.lineTo(...p) : c.moveTo(...p); }
+    c.strokeStyle = color; c.lineWidth = width; c.stroke(); c.restore();
+  };
+  if (st.ghost) curve(t + T() / 12, '#a5b4fc', 2, [6, 5]);
+  curve(t, '#2563eb', 2.6);
+  for (let x = 0; x <= XL + 1e-9; x += 0.5) dot(c, X(x), Y(yAt(x, t)), 2.6, '#93c5fd', null);
+  // 波源与波前
+  if (st.front) {
+    const x0 = st.dir > 0 ? 0 : XL, xf = x0 + st.dir * Math.min(XL, st.v * t);
+    dot(c, X(x0), Y(yAt(x0, t)), 6, '#111827');
+    text(c, '波源', X(x0), gy + 32, '#111827', { size: 12, bold: true });
+    if (st.v * t < XL) { line(c, X(xf), gy - 10 * ky, X(xf), gy + 10 * ky, '#f59e0b', 1.5, [4, 4]); text(c, '波前', X(xf), gy - 10 * ky - 4, '#b45309', { size: 12, bold: true }); }
+  }
+  // 传播方向
+  const ax = st.dir > 0 ? R - 120 : L + 120;
+  vec(c, ax - st.dir * 50, 30, ax + st.dir * 50, 30, '#2563eb', 3, 10);
+  text(c, `v = ${st.v} m/s`, ax, 48, '#2563eb', { bold: true, size: 12 });
+  // 质点 P、Q
+  const kv = 40 / (TAU / T() * 10);
+  [['P', st.xP, '#dc2626'], ['Q', st.xQ, '#16a34a']].forEach(([n, x, col]) => {
+    const y = yAt(x, t), vy = velAt(x, t), px = X(x), py = Y(y);
+    line(c, px, gy, px, py, col, 1, [3, 3]);
+    dot(c, px, py, 7, col);
+    text(c, n, px + 12, py - 12, col, { bold: true, size: 14 });
+    if (Math.abs(vy) > 1e-3) vec(c, px - 14, py, px - 14, py - Math.sign(vy) * Math.max(16, Math.abs(vy) * kv), col, 2.4, 8);
+  });
+  text(c, `t = ${fmt(t, 2)} s`, W - 14, 18, '#111827', { bold: true, size: 15, align: 'right' });
+  text(c, `T = λ/v = ${fmt(T(), 2)} s`, 14, 18, '#374151', { bold: true, size: 13, align: 'left' });
+  geo = { X, Y, gy };
+}
+
+function drawMulti(c, W, H) {
+  const lam = st.mlam, A = 5, L = 50, R = W - 30, span = 3 * lam, X = x => L + x / span * (R - L);
+  const gy = H * 0.42, ky = Math.min(H * 0.28, 120) / A, Y = y => gy - y * ky;
+  line(c, L - 10, gy, R + 10, gy, '#9ca3af', 1.2);
+  line(c, L, gy - A * ky - 12, L, gy + A * ky + 12, '#9ca3af', 1.2);
+  text(c, 'x / m', R + 6, gy + 16, '#374151', { size: 12, align: 'right' });
+  for (let x = 0; x <= span; x += 1) { line(c, X(x), gy, X(x), gy + 5, '#9ca3af', 1); text(c, `${x}`, X(x), gy + 14, '#9ca3af', { size: 10, halo: false }); }
+  const shape = s => x => A * Math.sin(TAU * (x - s) / lam);
+  const curve = (f, color, width, dash) => {
+    c.save(); if (dash) c.setLineDash(dash);
+    c.beginPath();
+    for (let i = 0; i <= 480; i++) { const x = span * i / 480; i ? c.lineTo(X(x), Y(f(x))) : c.moveTo(X(x), Y(f(x))); }
+    c.strokeStyle = color; c.lineWidth = width; c.stroke(); c.restore();
+  };
+  curve(shape(0), '#111827', 2.4);
+  const S = shiftFor(st.mdir, st.mn) * st.mdir, frac = Math.min(1, st.t / st.mdt);
+  curve(shape(S * frac), '#ea580c', 2.6);
+  curve(shape(st.mdx), '#111827', 2, [7, 5]);
+  text(c, '实线：t₁ 时刻', L + 10, gy - A * ky - 26, '#111827', { size: 12, bold: true, align: 'left' });
+  text(c, `虚线：t₂ = t₁ + ${fmt(st.mdt, 1)} s`, L + 120, gy - A * ky - 26, '#111827', { size: 12, bold: true, align: 'left' });
+  text(c, '橙线：按所选解平移中', L + 290, gy - A * ky - 26, '#ea580c', { size: 12, bold: true, align: 'left' });
+  // 平移距离示意：跟踪一个波峰
+  const crest0 = lam / 4, cx = crest0 + S * frac;
+  const wrap = x => ((x % span) + span) % span;
+  dot(c, X(wrap(cx)), Y(A), 6, '#ea580c');
+  const by = gy + A * ky + 46;
+  text(c, `本组解：波沿 ${st.mdir > 0 ? '+x' : '−x'} 平移 Δs = ${st.mn}λ + ${fmt(st.mdir > 0 ? st.mdx : lam - st.mdx, 1)} m = ${fmt(Math.abs(S), 1)} m`, W / 2, by, '#ea580c', { bold: true, size: 14 });
+  text(c, `已平移 ${fmt(Math.abs(S) * frac, 2)} m（橙点为同一个波峰）`, W / 2, by + 22, '#6b7280', { size: 12 });
+  text(c, `t − t₁ = ${fmt(Math.min(st.t, st.mdt), 2)} s`, W - 14, 18, '#111827', { bold: true, size: 15, align: 'right' });
+}
+
+function drawInterf(c, W, H) {
+  const k = SC(), cx = W / 2, cy = H / 2, toS = (x, y) => [cx + x * k, cy - y * k], toP = (px, py) => [(px - cx) / k, (cy - py) / k];
+  const cw = Math.ceil(W / 4), ch = Math.ceil(H / 4);
+  if (!off || off.width !== cw || off.height !== ch) { off = document.createElement('canvas'); off.width = cw; off.height = ch; }
+  const oc = off.getContext('2d'), img = oc.createImageData(cw, ch), d = img.data;
+  for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+    const [x, y] = toP(i * 4 + 2, j * 4 + 2), p = (j * cw + i) * 4;
+    if (st.amp) {
+      const a = ampAt(x, y) / 2, g = Math.round(255 - a * 190);
+      d[p] = g; d[p + 1] = g; d[p + 2] = 255 - a * 60;
+    } else {
+      const v = interfY(x, y, st.t) / 2;
+      if (v >= 0) { d[p] = 255; d[p + 1] = 255 - v * 200; d[p + 2] = 255 - v * 200; }
+      else { d[p] = 255 + v * 200; d[p + 1] = 255 + v * 200; d[p + 2] = 255; }
+    }
+    d[p + 3] = 255;
+  }
+  oc.putImageData(img, 0, 0);
+  c.imageSmoothingEnabled = true;
+  c.drawImage(off, 0, 0, W, H);
+  // 加强线、减弱线（双曲线）
+  const c0 = st.id / 2, hyper = (dr, color, dash) => {
+    const a = dr / 2;
+    if (Math.abs(a) >= c0) return;
+    const b = Math.sqrt(c0 * c0 - a * a);
+    c.save(); if (dash) c.setLineDash(dash); c.beginPath();
+    for (let i = 0; i <= 160; i++) {
+      const u = -3.2 + 6.4 * i / 160, x = -a * Math.cosh(u), y = b * Math.sinh(u), p = toS(x, y);
+      i ? c.lineTo(...p) : c.moveTo(...p);
+    }
+    c.strokeStyle = color; c.lineWidth = 1.6; c.stroke(); c.restore();
+  };
+  const off0 = st.phase ? 0.5 : 0;
+  for (let n = -10; n <= 10; n++) {
+    hyper((n + off0) * st.ilam, 'rgba(22,101,52,.85)');
+    hyper((n + off0 + 0.5) * st.ilam, 'rgba(107,114,128,.7)', [5, 5]);
+  }
+  const [s1, s2] = srcs().map(s => toS(...s));
+  line(c, s1[0], s1[1], s2[0], s2[1], 'rgba(17,24,39,.5)', 1);
+  dot(c, s1[0], s1[1], 7, '#111827'); text(c, 'S₁', s1[0], s1[1] + 18, '#111827', { bold: true, size: 13 });
+  dot(c, s2[0], s2[1], 7, '#111827'); text(c, 'S₂', s2[0], s2[1] + 18, '#111827', { bold: true, size: 13 });
+  const P = toS(...st.probe);
+  line(c, s1[0], s1[1], P[0], P[1], '#7c3aed', 1.2, [4, 3]);
+  line(c, s2[0], s2[1], P[0], P[1], '#7c3aed', 1.2, [4, 3]);
+  dot(c, P[0], P[1], 8, '#f59e0b', '#111827');
+  text(c, 'P（拖动）', P[0] + 12, P[1] - 14, '#111827', { bold: true, size: 13, align: 'left' });
+  c.fillStyle = 'rgba(255,255,255,.88)'; c.fillRect(8, 8, 300, 44);
+  line(c, 16, 22, 40, 22, 'rgba(22,101,52,.85)', 2); text(c, '振动加强线', 46, 22, '#166534', { size: 12, align: 'left' });
+  line(c, 140, 22, 164, 22, 'rgba(107,114,128,.8)', 2, [5, 5]); text(c, '振动减弱线', 170, 22, '#4b5563', { size: 12, align: 'left' });
+  text(c, st.amp ? '颜色越深振幅越大' : '红：波峰  蓝：波谷', 16, 42, '#6b7280', { size: 12, align: 'left' });
+  geo = { toP, P };
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  if (st.mode === 'graph') drawGraph(c, W, H);
+  else if (st.mode === 'multi') drawMulti(c, W, H);
+  else drawInterf(c, W, H);
+}
+
+Lab.draggable($('cv'), {
+  pick(px, py, rad) {
+    if (!geo) return null;
+    if (st.mode === 'interf' && Math.hypot(px - geo.P[0], py - geo.P[1]) < rad + 6) return 'probe';
+    if (st.mode === 'graph') {
+      for (const [n, x] of [['xP', st.xP], ['xQ', st.xQ]]) if (Math.hypot(px - geo.X(x), py - geo.Y(yAt(x, st.t))) < rad + 6) return n;
+    }
+    return null;
+  },
+  move(w, px, py) {
+    if (w === 'probe') st.probe = geo.toP(px, py);
+    else {
+      const L = 60, R = view.W - 30;
+      st[w] = Math.max(0, Math.min(XL, Math.round((px - L) / (R - L) * XL * 4) / 4));
+      Lab.setRange(w, st[w]);
+    }
+    render();
+  },
+});
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2;
+  chartView.begin();
+  if (st.mode === 'graph') {
+    const Te = graphTend();
+    [['P', st.xP, '#dc2626'], ['Q', st.xQ, '#16a34a']].forEach(([n, x, col], i) => {
+      const pts = Array.from({ length: 401 }, (_, j) => { const t = Te * j / 400; return [t, yAt(x, t)]; });
+      const ta = arrive(x);
+      Lab.plot(c, { x: i * half, y: 0, w: half, h: H }, {
+        xmin: 0, xmax: Te, ymin: -st.A * 1.3, ymax: st.A * 1.3, xlabel: 't / s', ylabel: `${n} 的振动图像 y / cm`, legendX: 200,
+        series: [{ pts, color: col }],
+        vlines: st.front && ta > 0 ? [{ x: ta, color: '#b45309', label: `${fmt(ta, 2)} s 起振` }] : [],
+        points: [{ x: Math.min(st.t, Te), y: yAt(x, st.t), color: col }],
+      });
+    });
+  } else if (st.mode === 'multi') {
+    const rows = multiRows();
+    const vmax = Math.max(...rows.map(r => r.v)) * 1.15;
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: -0.5, xmax: 3.5, ymin: 0, ymax: vmax, xlabel: 'n', ylabel: '可能的波速 v / (m/s)', legendX: 150, xticks: 4,
+      series: [{ pts: rows.filter(r => r.dir > 0).map(r => [r.n, r.v]), color: '#2563eb', label: '沿 +x', dash: [4, 4] },
+        { pts: rows.filter(r => r.dir < 0).map(r => [r.n, r.v]), color: '#dc2626', label: '沿 −x', dash: [4, 4] }],
+      points: rows.map(r => ({ x: r.n, y: r.v, color: r.dir > 0 ? '#2563eb' : '#dc2626', r: r.n === st.mn && r.dir === st.mdir ? 8 : 4, label: r.n === st.mn && r.dir === st.mdir ? fmt(r.v, 1) : '' })),
+    });
+    // x = 0 处质点在 Δt 内的振动
+    const sel = rows.find(r => r.n === st.mn && r.dir === st.mdir), Tm = sel.T;
+    const pts = Array.from({ length: 401 }, (_, j) => { const t = st.mdt * j / 400; return [t, 5 * Math.sin(TAU * (0 - st.mdir * sel.v * t) / st.mlam)]; });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: st.mdt, ymin: -6.5, ymax: 6.5, xlabel: 't − t₁ / s', ylabel: `x = 0 处质点：Δt 内振动 ${fmt(st.mdt / Tm, 2)} 个周期`, legendX: 400,
+      series: [{ pts, color: '#ea580c' }],
+      points: [{ x: Math.min(st.t, st.mdt), y: 5 * Math.sin(TAU * (0 - st.mdir * sel.v * Math.min(st.t, st.mdt)) / st.mlam), color: '#ea580c' }],
+    });
+  } else {
+    const [x, y] = st.probe, Tw = 3;
+    const t0 = Math.max(0, st.t - Tw);
+    const one = (sgn, idx) => Array.from({ length: 241 }, (_, j) => {
+      const t = t0 + Tw * j / 240, s = srcs()[idx], r = Math.hypot(x - s[0], y - s[1]);
+      return [t, Math.cos(TAU * t - TAU / st.ilam * r + (idx ? st.phase * Math.PI : 0))];
+    });
+    const sum = Array.from({ length: 241 }, (_, j) => { const t = t0 + Tw * j / 240; return [t, interfY(x, y, t)]; });
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: t0, xmax: t0 + Tw, ymin: -2.4, ymax: 2.4, xlabel: 't / T', ylabel: 'P 的振动 / A', legendX: 90,
+      series: [{ pts: one(1, 0), color: '#93c5fd', dash: [4, 4], label: 'S₁ 传来' }, { pts: one(1, 1), color: '#fca5a5', dash: [4, 4], label: 'S₂ 传来' }, { pts: sum, color: '#111827', label: '合振动' }],
+    });
+    const c0 = st.id / 2;
+    const pts = Array.from({ length: 401 }, (_, j) => { const xx = -c0 + st.id * j / 400; return [xx + c0, ampAt(xx, 0)]; });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: st.id, ymin: 0, ymax: 2.5, xlabel: '到 S₁ 的距离 / m', ylabel: `S₁S₂ 连线上的振幅（加强点 ${strongCount()} 个）`, legendX: 400,
+      series: [{ pts, color: '#166534' }],
+      hlines: [{ y: 2, color: '#9ca3af', label: '2A' }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  graph: [
+    '同侧法：在波形图上，表示质点振动方向的箭头和表示波传播方向的箭头画在波形的同一侧。也可以用"上下坡"或"微平移"判断。',
+    '波动图像（横轴 x）是许多质点在同一时刻的位移；振动图像（横轴 t）是一个质点在不同时刻的位移。',
+    '每个质点的起振方向都和波源的起振方向相同（也和波前处质点此刻的振动方向相同）。',
+    '两质点相距 Δx = nλ 时振动情况总相同；Δx = (2n + 1)λ/2 时总相反。',
+    '质点一个周期通过的路程是 4A，半个周期是 2A；四分之一周期只有从平衡位置或最大位移处开始时才是 A。',
+  ],
+  multi: [
+    '没有说明传播方向时，要分 +x、−x 两种情况；没有限定时间时，要加上整数个波长（周期）：Δs = nλ + Δx。',
+    '波速 v = Δs/Δt = (nλ + Δx)/Δt，周期 T = λ/v，n = 0, 1, 2, …',
+    '若已知 T > Δt，则 n = 0；若已知 T < Δt < 2T，则 n = 1，依此类推。',
+  ],
+  interf: [
+    '两列频率相同的波才能产生稳定的干涉图样。',
+    '两波源同相时：路程差 Δr = nλ 处振动加强（振幅 2A），Δr = (2n + 1)λ/2 处振动减弱。反相时恰好反过来。',
+    '振动加强点的位移也在不停变化，只是振幅最大；某时刻的位移可以为零。',
+    '加强区和减弱区的位置不随时间变化，相互间隔。',
+  ],
+};
+function phaseRel(dx, lam) {
+  const r = dx / lam, f = r - Math.floor(r);
+  if (Math.abs(f) < 1e-6 || Math.abs(f - 1) < 1e-6) return { s: `Δx = ${fmt(r, 2)}λ，整数倍 → 振动情况总相同`, k: 'same' };
+  if (Math.abs(f - 0.5) < 1e-6) return { s: `Δx = ${fmt(r, 2)}λ，半波长的奇数倍 → 振动情况总相反`, k: 'opp' };
+  return { s: `Δx = ${fmt(r, 3)}λ，既不同相也不反相`, k: '' };
+}
+function updatePanel() {
+  ['graph', 'multi', 'interf'].forEach(m => { $(m + 'Panel').style.display = st.mode === m ? '' : 'none'; });
+  $('startRow').style.display = st.front ? '' : 'none';
+  $('ttRow').style.display = st.mode === 'interf' ? 'none' : '';
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  let html = '', rows = '';
+  if (st.mode === 'graph') {
+    $('hint').textContent = '拖动红点 P、绿点 Q 改变位置；虚线是稍后一点的波形';
+    $('ttv').textContent = `${fmt(st.t, 2)} s`;
+    const t = st.t, Tp = T();
+    const desc = x => { const vy = velAt(x, t), y = yAt(x, t); if (st.front && t < arrive(x)) return '还没起振'; return `${Math.abs(vy) < 1e-3 ? '速度为零' : vy > 0 ? '向上运动' : '向下运动'}，${Math.abs(y) < 1e-3 ? '加速度为零' : `加速度向${y > 0 ? '下' : '上'}`}`; };
+    rows = `<tr><td>周期 T = λ/v</td><td>${fmt(Tp, 3)} s</td></tr><tr><td>频率 f</td><td>${fmt(1 / Tp, 3)} Hz</td></tr>
+      <tr><td>P：y = ${fmt(yAt(st.xP, t), 2)} cm</td><td>${desc(st.xP)}</td></tr>
+      <tr><td>Q：y = ${fmt(yAt(st.xQ, t), 2)} cm</td><td>${desc(st.xQ)}</td></tr>
+      <tr><td>0 ~ t 内 P 的路程</td><td>${fmt(pathLen(st.xP, t), 1)} cm（${fmt(pathLen(st.xP, t) / st.A, 2)}A）</td></tr>`;
+    const vy = velAt(st.xP, t);
+    html = `<div class="node"><span class="f">v = λ/T → T = λ/v</span> = ${st.lam} ÷ ${st.v} = <span class="v">${fmt(Tp, 3)} s</span></div>`;
+    if (!(st.front && t < arrive(st.xP)) && Math.abs(vy) > 1e-3) html += `<div class="link">↓ 同侧法（波沿 ${st.dir > 0 ? '+x' : '−x'}）</div><div class="node"><span class="f">P 此刻${vy > 0 ? '向上' : '向下'}运动</span><br><span class="n">微平移：把波形沿传播方向稍移一点（虚线），P 的新位置在${vy > 0 ? '上' : '下'}方。</span></div>`;
+    if (st.front) {
+      const ta = arrive(st.xP), first = ta + (st.start > 0 ? Tp / 4 : 3 * Tp / 4);
+      html += `<div class="link">↓ 波从波源传到 P</div><div class="node"><span class="f">t = |x_P − x_源|/v</span> = <span class="v">${fmt(ta, 3)} s</span><br><span class="n">P 的起振方向与波源相同：先向${st.start > 0 ? '上' : '下'}。</span><br><span class="f">P 第一次到达波峰：t = ${fmt(ta, 3)} + ${st.start > 0 ? 'T/4' : '3T/4'} = <span class="v">${fmt(first, 3)} s</span></span></div>`;
+    }
+    const pr = phaseRel(Math.abs(st.xP - st.xQ), st.lam);
+    html += `<div class="link">↓ P、Q 的关系</div><div class="node"><span class="v">${pr.s}</span>${pr.k === 'opp' ? '<br><span class="n">P 在波峰时 Q 一定在波谷，速度也总相反。</span>' : ''}</div>`;
+    html += `<div class="link">↓ 路程</div><div class="node"><span class="n">每经过 T，路程 4A = ${4 * st.A} cm；t = ${fmt(t, 2)} s = ${fmt(t / Tp, 2)}T。</span></div>`;
+  } else if (st.mode === 'multi') {
+    $('hint').textContent = '实线、虚线是同一列波在两个时刻的波形；橙线演示所选的那一组解';
+    $('ttv').textContent = `${fmt(Math.min(st.t, st.mdt), 2)} s`;
+    const all = multiRows();
+    rows = '<tr><td>n</td><td>沿 +x：v / T</td><td>沿 −x：v / T</td></tr>' + [0, 1, 2, 3].map(n => {
+      const a = all.find(r => r.n === n && r.dir > 0), b = all.find(r => r.n === n && r.dir < 0);
+      const cell = r => `<span${r.n === st.mn && r.dir === st.mdir ? ' style="color:#ea580c"' : ''}>${fmt(r.v, 2)} m/s / ${fmt(r.T, 3)} s</span>`;
+      return `<tr><td>${n}</td><td>${cell(a)}</td><td>${cell(b)}</td></tr>`;
+    }).join('');
+    const sel = all.find(r => r.n === st.mn && r.dir === st.mdir);
+    html = `<div class="node"><span class="f">读图：λ = ${st.mlam} m，实线到虚线向右错开 ${fmt(st.mdx, 1)} m</span></div>
+      <div class="link">↓ 方向不确定 + 时间周期性</div>
+      <div class="node"><span class="f">沿 +x：Δs = nλ + ${fmt(st.mdx, 1)}</span><br><span class="f">沿 −x：Δs = nλ + ${fmt(st.mlam - st.mdx, 1)}</span>（n = 0, 1, 2, …）</div>
+      <div class="link">↓ v = Δs/Δt</div>
+      <div class="node"><span class="f">沿 +x：v = (${st.mlam}n + ${fmt(st.mdx, 1)}) / ${fmt(st.mdt, 1)} m/s</span><br><span class="f">沿 −x：v = (${st.mlam}n + ${fmt(st.mlam - st.mdx, 1)}) / ${fmt(st.mdt, 1)} m/s</span></div>
+      <div class="link">↓ 所选这组</div>
+      <div class="node"><span class="v">n = ${st.mn}，沿 ${st.mdir > 0 ? '+x' : '−x'}：v = ${fmt(sel.v, 2)} m/s，T = ${fmt(sel.T, 3)} s</span><br><span class="n">Δt = ${fmt(st.mdt / sel.T, 3)}T。${st.mn === 0 ? '这是 T > Δt 时的唯一解。' : `这组解对应 ${st.mn === 1 ? '' : st.mn}T < Δt < ${st.mn + 1}T。`}</span></div>`;
+  } else {
+    $('hint').textContent = '拖动黄点 P，看路程差与振动强弱';
+    const [s1, s2] = srcs(), [x, y] = st.probe;
+    const r1 = Math.hypot(x - s1[0], y - s1[1]), r2 = Math.hypot(x - s2[0], y - s2[1]), dr = Math.abs(r1 - r2), q = dr / st.ilam;
+    const amp = ampAt(x, y);
+    rows = `<tr><td>r₁ = PS₁</td><td>${fmt(r1, 2)} m</td></tr><tr><td>r₂ = PS₂</td><td>${fmt(r2, 2)} m</td></tr>
+      <tr><td>路程差 Δr</td><td>${fmt(dr, 2)} m = ${fmt(q, 2)}λ</td></tr><tr><td>P 的振幅</td><td>${fmt(amp, 2)}A</td></tr>`;
+    const f = q - Math.floor(q), near = (a) => Math.abs(f - a) < 0.04 || Math.abs(f - a - 1) < 0.04;
+    const strong = st.phase ? near(0.5) : near(0) || near(1), weak = st.phase ? near(0) || near(1) : near(0.5);
+    html = `<div class="node"><span class="f">Δr = |r₁ − r₂|</span> = <span class="v">${fmt(dr, 2)} m = ${fmt(q, 2)}λ</span></div>
+      <div class="link">↓ 两波源${st.phase ? '反相' : '同相'}</div>
+      <div class="node"><span class="f">${st.phase ? 'Δr = (2n + 1)λ/2 加强，Δr = nλ 减弱' : 'Δr = nλ 加强，Δr = (2n + 1)λ/2 减弱'}</span><br><span class="v">${strong ? 'P 是振动加强点，振幅 2A' : weak ? 'P 是振动减弱点，振幅约为 0' : `P 介于两者之间，振幅 ${fmt(amp, 2)}A`}</span></div>
+      <div class="link">↓ S₁S₂ 连线上（不含波源）</div>
+      <div class="node"><span class="f">|Δr| < d = ${fmt(st.id, 1)} m = ${fmt(st.id / st.ilam, 2)}λ</span><br><span class="v">振动加强点共 ${strongCount()} 个</span><br><span class="n">${st.phase ? '取 (2n + 1)λ/2 < d 的 n' : '取 |n|λ < d 的整数 n'}，相邻加强点相距 λ/2 = ${fmt(st.ilam / 2, 2)} m。</span></div>`;
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function tEnd() { return st.mode === 'graph' ? graphTend() : st.mode === 'multi' ? st.mdt : Infinity; }
+function render() { draw(); drawChart(); updatePanel(); }
+const anim = Lab.loop(dt => {
+  const te = tEnd();
+  const rate = st.mode === 'multi' ? st.mdt / 3 : st.mode === 'interf' ? 0.6 : 1;
+  st.t = Math.min(te, st.t + dt * st.speed * rate);
+  if (isFinite(te)) $('tt').value = Math.round(st.t / te * 1000);
+  render();
+  if (st.t >= te) { $('play').textContent = '▶ 重新开始'; return false; }
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.t >= tEnd() - 1e-9) st.t = 0;
+  $('play').textContent = '⏸ 暂停'; anim.start();
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.25 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.t = +$('tt').value / 1000 * tEnd(); render(); });
+
+const RNG = {
+  A: v => `${v} cm`, lam: v => `${fmt(v, 1)} m`, v: v => `${fmt(v, 1)} m/s`, xP: v => `${fmt(v, 2)} m`, xQ: v => `${fmt(v, 2)} m`,
+  mlam: v => `${v} m`, mdx: v => `${fmt(v, 1)} m`, mdt: v => `${fmt(v, 1)} s`, mn: v => `${v}`,
+  ilam: v => `${fmt(v, 1)} m`, id: v => `${fmt(v, 1)} m`,
+};
+const resetT = new Set(['lam', 'v', 'mlam', 'mdx', 'mdt', 'mn']);
+Object.keys(RNG).forEach(k => Lab.range(k, RNG[k], v => {
+  st[k] = v;
+  if (k === 'mlam') { st.mdx = Math.min(st.mdx, v - 0.5); Lab.setRange('mdx', st.mdx); }
+  if (k === 'mdx') { st.mdx = Math.min(v, st.mlam - 0.5); Lab.setRange('mdx', st.mdx); }
+  if (resetT.has(k) && st.mode === 'multi') st.t = 0;
+  render();
+}));
+Lab.radios('mode', m => { st.mode = m; st.t = 0; anim.stop(); $('play').textContent = '▶ 开始'; if (m === 'interf') { $('play').textContent = '⏸ 暂停'; anim.start(); } render(); });
+Lab.radios('dir', v => { st.dir = +v; st.t = 0; render(); });
+Lab.radios('start', v => { st.start = +v; render(); });
+Lab.radios('mdir', v => { st.mdir = +v; st.t = 0; render(); });
+Lab.radios('phase', v => { st.phase = +v; render(); });
+$('front').addEventListener('change', () => { st.front = $('front').checked; st.t = 0; render(); });
+$('ghost').addEventListener('change', () => { st.ghost = $('ghost').checked; render(); });
+$('amp').addEventListener('change', () => { st.amp = $('amp').checked; render(); });
+
+const PRESETS = [
+  ['同侧法判断振动方向', { mode: 'graph', A: 5, lam: 4, v: 2, dir: 1, front: false, xP: 3, xQ: 5 }, 0.3],
+  ['P、Q 振动总相反', { mode: 'graph', A: 5, lam: 4, v: 2, dir: -1, front: false, xP: 2, xQ: 8 }, 0],
+  ['波源起振方向与传到时刻', { mode: 'graph', A: 5, lam: 4, v: 2, dir: 1, front: true, start: -1, xP: 6, xQ: 9 }, null],
+  ['两时刻波形：多解', { mode: 'multi', mlam: 4, mdx: 1, mdt: 0.5, mdir: 1, mn: 0 }, null],
+  ['已知 T < Δt < 2T', { mode: 'multi', mlam: 4, mdx: 3, mdt: 0.6, mdir: -1, mn: 1 }, null],
+  ['干涉：连线上的加强点', { mode: 'interf', ilam: 1.5, id: 4.5, phase: 0, amp: true, probe: [0.75, 0] }, null],
+  ['反相波源', { mode: 'interf', ilam: 1.5, id: 4.5, phase: 1, amp: false, probe: [0, 2] }, null],
+];
+PRESETS.forEach(([name, o, tFix]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, o);
+    Lab.setRadio('mode', st.mode); Lab.setRadio('dir', st.dir); Lab.setRadio('start', st.start); Lab.setRadio('mdir', st.mdir); Lab.setRadio('phase', st.phase);
+    $('front').checked = st.front; $('amp').checked = st.amp;
+    Object.keys(RNG).forEach(k => Lab.setRange(k, st[k]));
+    anim.stop();
+    if (tFix !== null) { st.t = tFix; $('play').textContent = '▶ 继续'; render(); return; }
+    st.t = 0; $('play').textContent = '⏸ 暂停'; render(); anim.start();
+  });
+  $('presets').appendChild(btn);
+});
+render();
+</script>
+</body>
+</html>

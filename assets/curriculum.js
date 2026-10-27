@@ -45,6 +45,9 @@ window.LABS = {
   'circular-motion': { name: '圆周运动的临界问题', desc: '绳模型与杆模型、汽车过桥、火车转弯', icon: '◔' },
   'satellite': { name: '卫星运行、变轨与双星', desc: '高轨低速大周期、同步卫星与赤道物体、两次点火变轨', icon: '◎' },
   'vehicle-power': { name: '机车的两种启动方式', desc: '恒定功率与恒定加速度启动的 v–t、F–t 图像', icon: '⛟' },
+  'shm': { name: '简谐运动、单摆与共振', desc: 'x–t 图像读 v、a，竖直弹簧振子，单摆周期与测 g，共振曲线', icon: '∽' },
+  'wave': { name: '机械波：图像、多解与干涉', desc: '同侧法、波动图像与振动图像、两时刻波形多解、干涉加强点', icon: '〰' },
+  'light': { name: '光的折射、全反射与双缝干涉', desc: '半圆砖临界角、平行玻璃砖侧移、三棱镜偏向角、Δx = lλ/d', icon: '◭' },
   'collision': { name: '碰撞与动量守恒', desc: '弹性与非弹性碰撞、弹簧连接体、子弹打木块', icon: '⇄' },
   'capacitor': { name: '电容器的动态分析', desc: '拖动极板、插电介质，对比 U 不变和 Q 不变两种情况', icon: '▥' },
   'voltammetry': { name: '伏安法测电阻', desc: '电流表内接、外接的误差对比，试触法选择接法', icon: 'Ⓐ' },
@@ -237,7 +240,7 @@ window.CURRICULUM = [
         phet: ['collision-lab'],
       },
       {
-        id: 'b4c2', num: '第二章', title: '机械振动', domain: 'wave', fig: 'shm',
+        id: 'b4c2', num: '第二章', title: '机械振动', domain: 'wave', fig: 'shm', labs: ['shm'],
         sections: [
           ['简谐运动', '位移-时间图像是正弦曲线；位移从平衡位置算起。'],
           ['简谐运动的描述', '振幅、周期、频率、相位。', 'x = A sin(ωt + φ)'],
@@ -250,7 +253,7 @@ window.CURRICULUM = [
         phet: ['masses-and-springs', 'pendulum-lab'],
       },
       {
-        id: 'b4c3', num: '第三章', title: '机械波', domain: 'wave', fig: 'wave',
+        id: 'b4c3', num: '第三章', title: '机械波', domain: 'wave', fig: 'wave', labs: ['wave'],
         sections: [
           ['波的形成', '介质中各质点只在各自平衡位置附近振动，不随波迁移；分为横波和纵波。'],
           ['波的描述', '用“同侧法”或“上下坡法”判断质点振动方向与波的传播方向。', 'v = λf = λ / T'],
@@ -262,7 +265,7 @@ window.CURRICULUM = [
         phet: ['wave-on-a-string', 'wave-interference'],
       },
       {
-        id: 'b4c4', num: '第四章', title: '光', domain: 'wave', fig: 'refraction',
+        id: 'b4c4', num: '第四章', title: '光', domain: 'wave', fig: 'refraction', labs: ['light'],
         sections: [
           ['光的折射', '折射定律；介质折射率 n > 1。', 'n = sinθ₁ / sinθ₂ = c / v'],
           ['全反射', '光从光密介质射向光疏介质、入射角大于等于临界角时发生全反射；应用：光导纤维。', 'sin C = 1/n'],

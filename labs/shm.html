@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>简谐运动、单摆与共振 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>简谐运动、单摆与共振</b><span class="crumb">选择性必修第一册 · 第二章 机械振动</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">简谐运动的特征：回复力 <b>F = −kx</b>，加速度 a = −kx/m。位移、回复力、加速度同步变化；速度、动能与它们"错开"四分之一周期。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="spring" checked>弹簧振子</label>
+      <label class="chk"><input type="radio" name="mode" value="pend">单摆</label>
+      <label class="chk"><input type="radio" name="mode" value="forced">受迫振动与共振</label>
+    </div>
+
+    <div id="springPanel">
+      <div class="row">
+        <label class="chk"><input type="radio" name="orient" value="h" checked>水平</label>
+        <label class="chk"><input type="radio" name="orient" value="v">竖直悬挂</label>
+      </div>
+      <div class="row">劲度系数 k <input type="range" id="k" min="20" max="400" step="10" value="100"><span class="val" id="kv"></span></div>
+      <div class="row">质量 m <input type="range" id="m" min="0.1" max="2" step="0.1" value="0.5"><span class="val" id="mv"></span></div>
+      <div class="row">振幅 A <input type="range" id="A" min="1" max="15" step="0.5" value="5"><span class="val" id="Av"></span></div>
+      <div class="row">
+        <label class="chk"><input type="radio" name="start" value="eq" checked>从平衡位置向正方向开始</label>
+        <label class="chk"><input type="radio" name="start" value="max">从正向最大位移开始</label>
+      </div>
+    </div>
+
+    <div id="pendPanel">
+      <div class="row">摆长 l <input type="range" id="l" min="0.2" max="2" step="0.05" value="1"><span class="val" id="lv"></span></div>
+      <div class="row">摆角 θ₀ <input type="range" id="th0" min="2" max="60" step="1" value="5"><span class="val" id="th0v"></span></div>
+      <div class="row">重力加速度 g <select id="g"><option value="9.8">地球 9.8 m/s²</option><option value="1.63">月球 1.63 m/s²</option><option value="3.7">火星 3.7 m/s²</option></select></div>
+      <h2>用单摆测 g</h2>
+      <div class="row">小球半径 r <input type="range" id="r" min="0" max="3" step="0.1" value="1"><span class="val" id="rv"></span></div>
+      <div class="row"><label class="chk"><input type="checkbox" id="forgot">摆长只量了摆线长（漏加 r）</label></div>
+    </div>
+
+    <div id="forcedPanel">
+      <div class="row">固有频率 f₀ <input type="range" id="f0" min="0.5" max="2" step="0.1" value="1"><span class="val" id="f0v"></span></div>
+      <div class="row">驱动力频率 f <input type="range" id="fd" min="0.1" max="3" step="0.05" value="0.6"><span class="val" id="fdv"></span></div>
+      <div class="row">阻尼 <input type="range" id="beta" min="0.05" max="1" step="0.05" value="0.15"><span class="val" id="betav"></span></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="slow">慢放 0.25×</button></div>
+    <div class="row">时刻 t <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2>当前时刻</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const DEG = Math.PI / 180, TAU = Math.PI * 2, G0 = 10;
+const st = { mode: 'spring', orient: 'h', k: 100, m: 0.5, A: 5, start: 'eq', l: 1, th0: 5, g: 9.8, r: 1, forgot: false, f0: 1, fd: 0.6, beta: 0.15, t: 0, speed: 1 };
+let pend = null, forced = null;
+
+// ---------- 弹簧振子 ----------
+const om = () => Math.sqrt(st.k / st.m), Tsp = () => TAU / om();
+function spring(t) {
+  const w = om(), ph = st.start === 'max' ? Math.PI / 2 : 0, A = st.A / 100;
+  const x = A * Math.sin(w * t + ph), v = A * w * Math.cos(w * t + ph), a = -w * w * x;
+  return { x, v, a, F: -st.k * x, Ek: 0.5 * st.m * v * v, Ep: 0.5 * st.k * x * x, E: 0.5 * st.k * A * A };
+}
+
+// ---------- 单摆（RK4，不做小角度近似）----------
+function simPend() {
+  const g = st.g, l = st.l, T0 = TAU * Math.sqrt(l / g), dt = T0 / 2000;
+  let th = st.th0 * DEG, w = 0, t = 0;
+  const f = (a) => -g / l * Math.sin(a), pts = [{ t: 0, th, w }];
+  let cross = [], prev = th;
+  const Tend = 3.2 * T0;
+  while (t < Tend) {
+    const k1t = w, k1w = f(th), k2t = w + k1w * dt / 2, k2w = f(th + k1t * dt / 2), k3t = w + k2w * dt / 2, k3w = f(th + k2t * dt / 2), k4t = w + k3w * dt, k4w = f(th + k3t * dt);
+    th += (k1t + 2 * k2t + 2 * k3t + k4t) * dt / 6; w += (k1w + 2 * k2w + 2 * k3w + k4w) * dt / 6; t += dt;
+    if (prev > 0 && th <= 0) cross.push(t - dt * th / (th - prev));
+    prev = th;
+    pts.push({ t, th, w });
+  }
+  const T = cross.length >= 2 ? (cross[1] - cross[0]) : T0;
+  return { pts, T, T0, dt, Tend };
+}
+function pendAt(t) { const i = Math.min(pend.pts.length - 1, Math.round(t / pend.dt)); return pend.pts[i]; }
+
+// ---------- 受迫振动 ----------
+function simForced() {
+  const w0 = TAU * st.f0, wd = TAU * st.fd, b = st.beta, dt = 0.002, Tend = 30;
+  let x = 0, v = 0, t = 0;
+  const acc = (x, v, t) => Math.cos(wd * t) - 2 * b * v - w0 * w0 * x, pts = [];
+  while (t <= Tend + 1e-9) {
+    if (pts.length === 0 || t - pts[pts.length - 1].t >= 0.01 - 1e-9) pts.push({ t, x });
+    const k1x = v, k1v = acc(x, v, t), k2x = v + k1v * dt / 2, k2v = acc(x + k1x * dt / 2, v + k1v * dt / 2, t + dt / 2);
+    const k3x = v + k2v * dt / 2, k3v = acc(x + k2x * dt / 2, v + k2v * dt / 2, t + dt / 2), k4x = v + k3v * dt, k4v = acc(x + k3x * dt, v + k3v * dt, t + dt);
+    x += (k1x + 2 * k2x + 2 * k3x + k4x) * dt / 6; v += (k1v + 2 * k2v + 2 * k3v + k4v) * dt / 6; t += dt;
+  }
+  return { pts, Tend };
+}
+const ampF = (f) => { const w0 = TAU * st.f0, w = TAU * f; return 1 / Math.sqrt((w0 * w0 - w * w) ** 2 + (2 * st.beta * w) ** 2); };
+function forcedAt(t) { return forced.pts[Math.min(forced.pts.length - 1, Math.round(t / 0.01))]; }
+
+function tEnd() { return st.mode === 'spring' ? 3 * Tsp() : st.mode === 'pend' ? pend.Tend : forced.Tend; }
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+function zigzag(c, x1, y1, x2, y2, n, amp, color) {
+  const L = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / L, uy = (y2 - y1) / L, px = -uy, py = ux;
+  c.beginPath(); c.moveTo(x1, y1);
+  const s = L * 0.08; c.lineTo(x1 + ux * s, y1 + uy * s);
+  for (let i = 1; i < n; i++) { const f = s + (L - 2 * s) * i / n, sg = i % 2 ? 1 : -1; c.lineTo(x1 + ux * f + px * amp * sg, y1 + uy * f + py * amp * sg); }
+  c.lineTo(x2 - ux * s, y2 - uy * s); c.lineTo(x2, y2);
+  c.strokeStyle = color; c.lineWidth = 2; c.stroke();
+}
+function drawSpring(c, W, H) {
+  const p = spring(st.t), A = st.A / 100, kx = Math.min(W * 0.3, 260) / 0.15;
+  const vmax = A * om(), kv = 70 / vmax, ka = 70 / (vmax * om());
+  if (st.orient === 'h') {
+    const gy = H * 0.5, ox = W * 0.5, X = x => ox + x * kx, bw = 56;
+    c.fillStyle = '#e7e5e4'; c.fillRect(30, gy, W - 60, 14); line(c, 30, gy, W - 30, gy, '#57534e', 2);
+    c.fillStyle = '#d6d3d1'; c.fillRect(30, gy - 110, 16, 110);
+    zigzag(c, 46, gy - 26, X(p.x) - bw / 2, gy - 26, 14, 10, '#6b7280');
+    c.fillStyle = '#fdba74'; c.strokeStyle = '#ea580c'; c.lineWidth = 2; c.fillRect(X(p.x) - bw / 2, gy - 52, bw, 52); c.strokeRect(X(p.x) - bw / 2, gy - 52, bw, 52);
+    text(c, `m`, X(p.x), gy - 26, '#7c2d12', { bold: true, size: 14 });
+    for (const [x, lb] of [[0, 'O'], [A, '+A'], [-A, '−A']]) { line(c, X(x), gy + 14, X(x), gy + 26, '#374151', 1.5); text(c, lb, X(x), gy + 38, '#374151', { bold: true, size: 12 }); line(c, X(x), gy - 90, X(x), gy, '#d1d5db', 1, [4, 4]); }
+    if (Math.abs(p.v) > 1e-4) vec(c, X(p.x), gy - 70, X(p.x) + p.v * kv, gy - 70, '#16a34a', 2.6, 9);
+    text(c, `v`, X(p.x) + p.v * kv + Math.sign(p.v || 1) * 12, gy - 70, '#16a34a', { bold: true, size: 13 });
+    if (Math.abs(p.a) > 1e-4) vec(c, X(p.x), gy - 96, X(p.x) + p.a * ka, gy - 96, '#dc2626', 2.6, 9);
+    text(c, `a、F回`, X(p.x) + p.a * ka + Math.sign(p.a || 1) * 22, gy - 96, '#dc2626', { bold: true, size: 13 });
+  } else {
+    const Dl = st.m * G0 / st.k, oy = H * 0.52, cx = W * 0.35, Y = x => oy - x * kx, bw = 56;
+    const top = 30;
+    c.fillStyle = '#d6d3d1'; c.fillRect(cx - 80, top - 14, 160, 14);
+    zigzag(c, cx, top, cx, Y(p.x) - 26, 16, 12, '#6b7280');
+    c.fillStyle = '#fdba74'; c.strokeStyle = '#ea580c'; c.lineWidth = 2; c.fillRect(cx - bw / 2, Y(p.x) - 26, bw, 52); c.strokeRect(cx - bw / 2, Y(p.x) - 26, bw, 52);
+    text(c, 'm', cx, Y(p.x), '#7c2d12', { bold: true, size: 14 });
+    const rx = cx + 130;
+    line(c, rx, Y(A) - 30, rx, Y(-A) + 30, '#9ca3af', 1.2);
+    for (const [x, lb] of [[0, '平衡位置 O'], [A, '最高点 +A'], [-A, '最低点 −A'], [Dl, '弹簧原长处']]) {
+      if (Y(x) < top + 10) continue;
+      line(c, cx - 40, Y(x), rx + 6, Y(x), x === Dl ? '#a855f7' : '#d1d5db', 1, [4, 4]);
+      text(c, `${lb}`, rx + 12, Y(x), x === Dl ? '#7e22ce' : '#374151', { size: 12, bold: true, align: 'left' });
+    }
+    if (Math.abs(p.v) > 1e-4) vec(c, cx - 60, Y(p.x), cx - 60, Y(p.x) - p.v * kv, '#16a34a', 2.6, 9);
+    text(c, 'v', cx - 74, Y(p.x) - p.v * kv / 2, '#16a34a', { bold: true, size: 13 });
+    if (Math.abs(p.a) > 1e-4) vec(c, cx + 40, Y(p.x), cx + 40, Y(p.x) - p.a * ka, '#dc2626', 2.6, 9);
+    text(c, 'a', cx + 54, Y(p.x) - p.a * ka / 2, '#dc2626', { bold: true, size: 13 });
+    const def = Dl - p.x;
+    text(c, `弹簧${Math.abs(def) < 1e-4 ? '处于原长' : def > 0 ? `伸长 ${fmt(def * 100, 2)} cm` : `压缩 ${fmt(-def * 100, 2)} cm`}，弹力 ${fmt(st.k * Math.abs(def), 2)} N`, 14, H - 44, '#7e22ce', { bold: true, size: 13, align: 'left' });
+  }
+  // 能量柱
+  const bx = W - 150, by = H * 0.75, bh = H * 0.45;
+  [['Ek', p.Ek, '#16a34a'], ['Ep', p.Ep, '#2563eb'], ['E', p.E, '#111827']].forEach(([n, v, col], i) => {
+    const x = bx + i * 42;
+    c.fillStyle = '#f3f4f6'; c.fillRect(x, by - bh, 30, bh);
+    c.fillStyle = col; c.fillRect(x, by - bh * v / p.E, 30, bh * v / p.E);
+    text(c, n, x + 15, by + 12, col, { bold: true, size: 12 });
+  });
+  text(c, '能量', bx + 50, by - bh - 12, '#374151', { bold: true, size: 12 });
+  text(c, `t = ${fmt(st.t, 3)} s`, W - 14, 18, '#111827', { bold: true, size: 15, align: 'right' });
+}
+function drawPend(c, W, H) {
+  const p = pendAt(st.t), cx = W * 0.4, top = 40, Lpx = Math.min(H * 0.78, W * 0.45) * Math.sqrt(st.l / 2), th = p.th;
+  const bob = [cx + Lpx * Math.sin(th), top + Lpx * Math.cos(th)];
+  c.fillStyle = '#d6d3d1'; c.fillRect(cx - 70, top - 12, 140, 12);
+  line(c, cx, top, cx, top + Lpx + 30, '#d1d5db', 1, [4, 4]);
+  c.beginPath(); c.arc(cx, top, Lpx, Math.PI / 2 - st.th0 * DEG, Math.PI / 2 + st.th0 * DEG); c.strokeStyle = '#e5e7eb'; c.lineWidth = 2; c.stroke();
+  line(c, cx, top, bob[0], bob[1], '#374151', 2);
+  dot(c, bob[0], bob[1], 14, '#94a3b8', '#334155');
+  // 受力：重力与回复力 mg sinθ
+  const kf = 60;
+  vec(c, bob[0], bob[1], bob[0], bob[1] + kf, '#111827', 2.4, 9); text(c, 'mg', bob[0] + 16, bob[1] + kf, '#111827', { bold: true, size: 12 });
+  const tg = [-Math.cos(th), Math.sin(th)], Fr = 70 * Math.sin(th) / Math.sin(st.th0 * DEG);
+  if (Math.abs(Fr) > 1) { vec(c, bob[0], bob[1], bob[0] + tg[0] * Fr, bob[1] + tg[1] * Fr, '#dc2626', 2.6, 9); text(c, '回复力 mg sinθ（放大画）', bob[0] + tg[0] * Fr - Math.sign(Fr) * 10, bob[1] + tg[1] * Fr - 16, '#dc2626', { bold: true, size: 12, align: Fr > 0 ? 'right' : 'left' }); }
+  text(c, `θ = ${fmt(th / DEG, 1)}°`, cx - 12, top + 24, '#374151', { bold: true, size: 13, align: 'right' });
+  text(c, `l = ${fmt(st.l, 2)} m`, cx + 14, top + 24, '#374151', { size: 12, align: 'left' });
+  text(c, `t = ${fmt(st.t, 3)} s`, W - 14, 18, '#111827', { bold: true, size: 15, align: 'right' });
+}
+function drawForced(c, W, H) {
+  const p = forcedAt(st.t), cx = W * 0.35, wy = 70, R = 34, wd = TAU * st.fd, ang = wd * st.t;
+  const amax = Math.max(...forced.pts.map(q => Math.abs(q.x))) || 1, k = Math.min(H * 0.25, 160) / amax;
+  dot(c, cx, wy, R, '#f3f4f6', '#6b7280');
+  const pin = [cx + R * 0.7 * Math.cos(ang), wy + R * 0.7 * Math.sin(ang)];
+  line(c, cx, wy, pin[0], pin[1], '#6b7280', 3); dot(c, pin[0], pin[1], 5, '#f59e0b', '#92400e');
+  text(c, `驱动轮 f = ${fmt(st.fd, 2)} Hz`, cx + R + 12, wy, '#92400e', { bold: true, size: 12, align: 'left' });
+  const eq = H * 0.55, by = eq - p.x * k;
+  zigzag(c, pin[0], pin[1], cx, by - 24, 16, 10, '#6b7280');
+  c.fillStyle = '#fdba74'; c.strokeStyle = '#ea580c'; c.lineWidth = 2; c.fillRect(cx - 28, by - 24, 56, 48); c.strokeRect(cx - 28, by - 24, 56, 48);
+  line(c, cx - 70, eq, cx + 70, eq, '#d1d5db', 1, [4, 4]); text(c, '平衡位置', cx - 76, eq, '#6b7280', { size: 12, align: 'right' });
+  text(c, `t = ${fmt(st.t, 2)} s`, W - 14, 18, '#111827', { bold: true, size: 15, align: 'right' });
+  const res = Math.abs(st.fd - st.f0) < 0.05;
+  text(c, res ? '共振！驱动力频率 = 固有频率' : `f ${st.fd < st.f0 ? '<' : '>'} f₀ = ${fmt(st.f0, 1)} Hz`, W * 0.72, H * 0.3, res ? '#dc2626' : '#374151', { bold: true, size: 16 });
+}
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  if (st.mode === 'spring') drawSpring(c, W, H); else if (st.mode === 'pend') drawPend(c, W, H); else drawForced(c, W, H);
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2, te = tEnd(), t = Math.min(st.t, te);
+  chartView.begin();
+  const samp = (f, N = 400) => Array.from({ length: N + 1 }, (_, j) => { const tt = te * j / N; return [tt, f(tt)]; });
+  if (st.mode === 'spring') {
+    const A = st.A, w = om(), p = spring(t);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: te, ymin: -A * 1.3, ymax: A * 1.3, xlabel: 't / s', ylabel: 'x / cm', legendX: 70,
+      series: [{ pts: samp(tt => spring(tt).x * 100), color: '#ea580c', label: 'x' },
+        { pts: samp(tt => spring(tt).v / w * 100), color: '#16a34a', dash: [5, 4], label: 'v（缩放）' },
+        { pts: samp(tt => spring(tt).a / (w * w) * 100), color: '#dc2626', dash: [2, 3], label: 'a（缩放）' }],
+      vlines: [1, 2].map(n => ({ x: n * Tsp(), color: '#d1d5db', label: n === 1 ? `T = ${fmt(Tsp(), 3)} s` : '' })),
+      points: [{ x: t, y: p.x * 100, color: '#ea580c' }],
+    });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: te, ymin: 0, ymax: p.E * 1.2 * 1000, xlabel: 't / s', ylabel: '能量 / mJ', legendX: 70,
+      series: [{ pts: samp(tt => spring(tt).Ek * 1000), color: '#16a34a', label: 'Ek' }, { pts: samp(tt => spring(tt).Ep * 1000), color: '#2563eb', label: 'Ep' }],
+      hlines: [{ y: p.E * 1000, color: '#111827', label: `E = ½kA² = ${fmt(p.E * 1000, 1)} mJ` }],
+      vlines: [{ x: Tsp() / 2, color: '#d1d5db', label: '能量周期 T/2' }],
+      points: [{ x: t, y: p.Ek * 1000, color: '#16a34a' }, { x: t, y: p.Ep * 1000, color: '#2563eb' }],
+    });
+  } else if (st.mode === 'pend') {
+    const p = pendAt(t);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: te, ymin: -st.th0 * 1.3, ymax: st.th0 * 1.3, xlabel: 't / s', ylabel: 'θ / °', legendX: 70,
+      series: [{ pts: pend.pts.filter((_, i) => i % 10 === 0).map(q => [q.t, q.th / DEG]), color: '#2563eb', label: '实际' },
+        { pts: samp(tt => st.th0 * Math.cos(TAU * tt / pend.T0)), color: '#9ca3af', dash: [5, 4], label: '小角度近似' }],
+      points: [{ x: t, y: p.th / DEG, color: '#2563eb' }],
+    });
+    const r = st.r / 100, ls = [0.4, 0.6, 0.8, 1.0, 1.2, 1.4];
+    const T2 = l => 4 * Math.PI ** 2 * l / st.g;
+    const meas = ls.map(L => ({ x: st.forgot ? L - r : L, y: T2(L) }));
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: -0.1, xmax: 1.6, ymin: 0, ymax: T2(1.6) * 1.1, xlabel: '测得的摆长 l / m', ylabel: 'T² / s²', legendX: 70,
+      series: [{ pts: [[0, 0], [1.6, T2(1.6)]], color: '#9ca3af', dash: [5, 4], label: '真实摆长' },
+        { pts: [[st.forgot ? -r : 0, 0], [1.6, T2(1.6 + (st.forgot ? r : 0))]], color: '#dc2626', label: st.forgot ? '漏加 r：图线左移' : '测量值' }],
+      points: meas.map(q => ({ x: q.x, y: q.y, color: '#dc2626', r: 4 })).concat(st.forgot ? [{ x: -r, y: 0, color: '#dc2626', r: 5, label: `横截距 −r` }] : []),
+    });
+  } else {
+    const p = forcedAt(t);
+    const amax = Math.max(...forced.pts.map(q => Math.abs(q.x))) || 1;
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: te, ymin: -amax * 1.2, ymax: amax * 1.2, xlabel: 't / s', ylabel: '位移 x（相对值）', legendX: 400,
+      series: [{ pts: forced.pts.filter((_, i) => i % 2 === 0).map(q => [q.t, q.x]), color: '#ea580c' }],
+      points: [{ x: t, y: p.x, color: '#ea580c' }],
+    });
+    const curve = Array.from({ length: 401 }, (_, j) => { const f = 0.05 + 2.95 * j / 400; return [f, ampF(f)]; });
+    const top = Math.max(...curve.map(q => q[1]));
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 3, ymin: 0, ymax: top * 1.15, xlabel: '驱动力频率 f / Hz', ylabel: '稳定后的振幅（共振曲线）', legendX: 400,
+      series: [{ pts: curve, color: '#dc2626' }],
+      vlines: [{ x: st.f0, color: '#2563eb', label: `f₀ = ${fmt(st.f0, 1)} Hz` }],
+      points: [{ x: st.fd, y: ampF(st.fd), color: '#dc2626' }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  spring: [
+    '平衡位置：x = 0，回复力、加速度为零，速度、动能最大；最大位移处：速度为零，回复力、加速度、势能最大。',
+    '周期 T = 2π√(m/k)，与振幅无关；动能和势能的变化周期是 T/2。',
+    '关于平衡位置对称的两点，位移、回复力、加速度等大反向，速度大小相等，动能、势能相等。',
+    '从平衡位置或最大位移处开始，T/4 内路程为 A；从其他位置开始则不一定。',
+    '竖直弹簧振子：平衡位置弹簧伸长 mg/k；回复力是弹力与重力的合力。振幅 A = mg/k 时，最高点弹簧恰为原长。',
+  ],
+  pend: [
+    '单摆的回复力是重力沿切线方向的分力 mg sinθ，摆角很小时近似为简谐运动。',
+    'T = 2π√(l/g)：与摆球质量、振幅（小角度时）无关；摆长 l 是悬点到球心的距离。',
+    '摆角变大时实际周期略大于 2π√(l/g)，所以实验要求摆角小于 5°。',
+    '测 g：作 T²–l 图像，斜率 k = 4π²/g，g = 4π²/k。漏加小球半径时图线平移但斜率不变，g 的测量值不受影响；若直接用 g = 4π²l/T² 计算则偏小。',
+    '计时从摆球经过最低点开始，测 30～50 次全振动的时间求 T，误差较小。',
+  ],
+  forced: [
+    '受迫振动稳定后的频率等于驱动力频率，与物体的固有频率无关。',
+    '驱动力频率越接近固有频率，振幅越大；相等时振幅最大，叫共振。',
+    '阻尼越小，共振曲线越尖，共振时振幅越大。',
+    '应用：共振筛、音叉共鸣；防止：桥梁、机器底座要避开驱动频率。',
+  ],
+};
+function updatePanel() {
+  ['spring', 'pend', 'forced'].forEach(m => { $(m + 'Panel').style.display = st.mode === m ? '' : 'none'; });
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  const te = tEnd(), t = Math.min(st.t, te);
+  $('ttv').textContent = `${fmt(t, 2)} s`;
+  let rows = '', html = '';
+  if (st.mode === 'spring') {
+    $('hint').textContent = '绿色箭头：速度；红色箭头：加速度（与回复力同向，总指向平衡位置）';
+    const p = spring(t), T = Tsp(), A = st.A / 100, Dl = st.m * G0 / st.k;
+    rows = `<tr><td>位移 x</td><td>${fmt(p.x * 100, 2)} cm</td></tr><tr><td>速度 v</td><td>${fmt(p.v, 3)} m/s</td></tr>
+      <tr><td>加速度 a = −kx/m</td><td>${fmt(p.a, 3)} m/s²</td></tr><tr><td>回复力 F = −kx</td><td>${fmt(p.F, 3)} N</td></tr>
+      <tr><td>动能 / 势能</td><td>${fmt(p.Ek * 1000, 1)} / ${fmt(p.Ep * 1000, 1)} mJ</td></tr>`;
+    html = `<div class="node"><span class="f">T = 2π√(m/k)</span> = 2π√(${st.m}/${st.k}) = <span class="v">${fmt(T, 3)} s</span><br><span class="n">与振幅无关：把 A 拖大，T 不变。</span></div>
+      <div class="link">↓ 最大值</div>
+      <div class="node"><span class="f">a_max = kA/m</span> = <span class="v">${fmt(st.k * A / st.m, 2)} m/s²</span>；<span class="f">v_max = Aω</span> = <span class="v">${fmt(A * om(), 3)} m/s</span><br><span class="f">E = ½kA²</span> = <span class="v">${fmt(0.5 * st.k * A * A * 1000, 1)} mJ</span></div>`;
+    if (st.orient === 'v') {
+      const top = st.k * (Dl - A), bot = st.k * (Dl + A);
+      html += `<div class="link">↓ 竖直悬挂</div>
+        <div class="node"><span class="f">平衡位置：弹簧伸长 Δl = mg/k</span> = <span class="v">${fmt(Dl * 100, 2)} cm</span></div>
+        <div class="node"><span class="f">最低点弹力 = k(Δl + A) = mg + kA</span> = <span class="v">${fmt(bot, 2)} N</span><br>
+        <span class="f">最高点弹力 = k(Δl − A)</span> = <span class="v">${fmt(Math.abs(top), 2)} N</span>，${Math.abs(top) < 1e-9 ? '弹簧恰为原长，物体只受重力，a = g' : top > 0 ? '弹簧仍伸长（拉力）' : '弹簧被压缩（推力）'}</div>`;
+    }
+  } else if (st.mode === 'pend') {
+    $('hint').textContent = '红色箭头是回复力 mg sinθ（重力沿切线的分力）';
+    const p = pendAt(t), r = st.r / 100, lm = st.forgot ? st.l - r : st.l;
+    const gDirect = 4 * Math.PI ** 2 * lm / pend.T0 ** 2;
+    rows = `<tr><td>摆角 θ</td><td>${fmt(p.th / DEG, 2)}°</td></tr><tr><td>小角度近似周期 2π√(l/g)</td><td>${fmt(pend.T0, 4)} s</td></tr>
+      <tr><td>实际周期（数值计算）</td><td>${fmt(pend.T, 4)} s</td></tr>`;
+    html = `<div class="node"><span class="f">T = 2π√(l/g)</span> = 2π√(${fmt(st.l, 2)}/${st.g}) = <span class="v">${fmt(pend.T0, 4)} s</span><br><span class="n">摆角 ${st.th0}° 时实际周期 ${fmt(pend.T, 4)} s，相差 ${fmt((pend.T / pend.T0 - 1) * 100, 2)}%${st.th0 > 5 ? '，摆角太大，近似误差变明显' : ''}。</span></div>
+      <div class="link">↓ 测 g：图像法</div>
+      <div class="node"><span class="f">T² = (4π²/g)·l</span>，斜率 k = 4π²/g = <span class="v">${fmt(4 * Math.PI ** 2 / st.g, 3)} s²/m</span> → g = 4π²/k = <span class="v">${st.g} m/s²</span></div>`;
+    if (st.forgot) html += `<div class="link">↓ 漏加小球半径 r = ${fmt(st.r, 1)} cm</div>
+      <div class="node"><span class="n">图像法：图线向左平移 r（l 轴上截距为 −r），斜率不变，g 不受影响。</span><br><span class="f">直接代公式 g = 4π²l/T²</span> = <span class="v">${fmt(gDirect, 3)} m/s²（偏小）</span></div>`;
+  } else {
+    $('hint').textContent = '驱动轮按频率 f 转动，通过弹簧带动物体做受迫振动';
+    const tail = forced.pts.filter(q => q.t > 24), amp = Math.max(...tail.map(q => Math.abs(q.x)));
+    rows = `<tr><td>固有频率 f₀</td><td>${fmt(st.f0, 2)} Hz</td></tr><tr><td>驱动力频率 f</td><td>${fmt(st.fd, 2)} Hz</td></tr>
+      <tr><td>稳定后的振动频率</td><td>${fmt(st.fd, 2)} Hz</td></tr><tr><td>稳定振幅（相对共振时）</td><td>${fmt(amp / ampF(st.f0) * 100, 1)}%</td></tr>`;
+    html = `<div class="node"><span class="f">受迫振动稳定后：频率 = 驱动力频率 f</span> = <span class="v">${fmt(st.fd, 2)} Hz</span><br><span class="n">开始时有一段过渡，固有振动逐渐被阻尼消耗。</span></div>
+      <div class="link">↓ 振幅由 f 与 f₀ 的接近程度决定</div>
+      <div class="node"><span class="v">${Math.abs(st.fd - st.f0) < 0.05 ? 'f = f₀：共振，振幅最大' : `|f − f₀| = ${fmt(Math.abs(st.fd - st.f0), 2)} Hz，${st.fd < st.f0 ? '增大' : '减小'} f 振幅会变大`}</span></div>`;
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function rebuild() {
+  if (st.mode === 'pend') pend = simPend();
+  if (st.mode === 'forced') forced = simForced();
+  st.t = Math.min(st.t, tEnd());
+  $('tt').value = Math.round(st.t / tEnd() * 1000);
+  render();
+}
+const anim = Lab.loop(dt => {
+  const te = tEnd(), rate = st.mode === 'forced' ? 3 : 1;
+  st.t += dt * st.speed * rate;
+  if (st.t >= te) { if (st.mode === 'forced') { st.t = te; $('tt').value = 1000; render(); $('play').textContent = '▶ 重新开始'; return false; } st.t -= te; }
+  $('tt').value = Math.round(st.t / te * 1000);
+  render();
+});
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.t >= tEnd() - 1e-9) st.t = 0;
+  $('play').textContent = '⏸ 暂停'; anim.start();
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.25 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.t = +$('tt').value / 1000 * tEnd(); render(); });
+
+const RNG = { k: v => `${v} N/m`, m: v => `${fmt(v, 1)} kg`, A: v => `${fmt(v, 1)} cm`, l: v => `${fmt(v, 2)} m`, th0: v => `${v}°`, r: v => `${fmt(v, 1)} cm`, f0: v => `${fmt(v, 1)} Hz`, fd: v => `${fmt(v, 2)} Hz`, beta: v => fmt(v, 2) };
+Object.keys(RNG).forEach(k => Lab.range(k, RNG[k], v => { st[k] = v; if (['f0', 'fd', 'beta'].includes(k)) st.t = 0; rebuild(); }));
+Lab.radios('mode', m => { st.mode = m; st.t = 0; rebuild(); });
+Lab.radios('orient', v => { st.orient = v; render(); });
+Lab.radios('start', v => { st.start = v; render(); });
+$('g').addEventListener('change', () => { st.g = +$('g').value; st.t = 0; rebuild(); });
+$('forgot').addEventListener('change', () => { st.forgot = $('forgot').checked; render(); });
+
+const PRESETS = [
+  ['x–t 图像读 v、a', { mode: 'spring', orient: 'h', k: 100, m: 0.5, A: 5, start: 'eq' }, 0.125],
+  ['竖直弹簧：最高点原长', { mode: 'spring', orient: 'v', k: 100, m: 0.5, A: 5, start: 'max' }, 0],
+  ['竖直弹簧：最低点弹力', { mode: 'spring', orient: 'v', k: 100, m: 0.5, A: 8, start: 'max' }, null],
+  ['单摆周期与摆长', { mode: 'pend', l: 1, th0: 5, g: 9.8, forgot: false }, null],
+  ['摆角过大的误差', { mode: 'pend', l: 1, th0: 50, g: 9.8, forgot: false }, null],
+  ['测 g：漏加小球半径', { mode: 'pend', l: 1, th0: 5, g: 9.8, r: 2, forgot: true }, null],
+  ['共振', { mode: 'forced', f0: 1, fd: 1, beta: 0.15 }, null],
+  ['受迫振动频率 = 驱动频率', { mode: 'forced', f0: 1, fd: 0.5, beta: 0.15 }, null],
+];
+PRESETS.forEach(([name, o, tFix]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, o);
+    Lab.setRadio('mode', st.mode); Lab.setRadio('orient', st.orient); Lab.setRadio('start', st.start);
+    $('g').value = String(st.g); $('forgot').checked = st.forgot;
+    Object.keys(RNG).forEach(k => Lab.setRange(k, st[k]));
+    anim.stop(); st.t = 0;
+    if (tFix !== null) { st.t = tFix * (st.mode === 'spring' ? Tsp() : 1); rebuild(); $('play').textContent = '▶ 继续'; return; }
+    rebuild(); $('play').textContent = '⏸ 暂停'; anim.start();
+  });
+  $('presets').appendChild(btn);
+});
+rebuild();
+</script>
+</body>
+</html>

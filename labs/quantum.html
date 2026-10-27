@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>光电效应与氢原子能级 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>光电效应与氢原子能级</b><span class="crumb">选择性必修第三册 · 第四章 原子结构和波粒二象性</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">光子能量 <b>ε = hν</b>。光电效应方程 <b>E<sub>k</sub> = hν − W₀</b>，遏止电压 <b>eU<sub>c</sub> = E<sub>k</sub></b>；玻尔跃迁 <b>hν = E<sub>m</sub> − E<sub>n</sub></b>，氢原子 E<sub>n</sub> = −13.6 eV / n²。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="photo" checked>光电效应</label>
+      <label class="chk"><input type="radio" name="mode" value="level">氢原子能级跃迁</label>
+    </div>
+    <div class="row">阴极金属 <select id="metal"></select></div>
+
+    <div id="photoPanel">
+      <div class="row">入射光频率 ν <input type="range" id="nu" min="4" max="15" step="0.1" value="7.5"><span class="val" id="nuv"></span></div>
+      <div class="row">光强（单位时间光子数） <input type="range" id="I" min="1" max="5" step="0.5" value="3"><span class="val" id="Iv"></span></div>
+      <div class="row">电压 U<sub>AK</sub> <input type="range" id="U" min="-4" max="6" step="0.05" value="1"><span class="val" id="Uv"></span></div>
+      <div class="row"><button id="keep" style="flex:1">记下当前 I–U 曲线</button><button id="clear">清除</button></div>
+    </div>
+
+    <div id="levelPanel">
+      <div class="row">
+        <label class="chk"><input type="radio" name="lv" value="emit" checked>一群原子向低能级跃迁</label>
+        <label class="chk"><input type="radio" name="lv" value="absorb">基态原子吸收能量</label>
+      </div>
+      <div id="emitRow" class="row">处于第 n 能级 <input type="range" id="n" min="2" max="6" step="1" value="4"><span class="val" id="nv"></span></div>
+      <div id="absorbRows">
+        <div class="row">
+          <label class="chk"><input type="radio" name="kind" value="photon" checked>用光子照射</label>
+          <label class="chk"><input type="radio" name="kind" value="electron">用电子碰撞</label>
+        </div>
+        <div class="row">入射能量 E <input type="range" id="E" min="9" max="14.5" step="0.01" value="12.09"><span class="val" id="Ev"></span></div>
+      </div>
+      <div class="n" style="font-size:12px;color:#6b7280">点能级图中的箭头可以查看这条谱线</div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>当前数据</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const HC = 1240, HNU = 0.41357;
+const METALS = [['铯', 1.90], ['钾', 2.25], ['钠', 2.29], ['钙', 3.20], ['锌', 3.34]];
+const GHOST = ['#9ca3af', '#f59e0b', '#10b981', '#a855f7'];
+const st = { mode: 'photo', metal: 2, nu: 7.5, I: 3, U: 1, ghosts: [], lv: 'emit', n: 4, kind: 'photon', E: 12.09, sel: null };
+$('metal').innerHTML = METALS.map(([n, w], i) => `<option value="${i}">${n}（W₀ = ${w} eV）</option>`).join('');
+$('metal').value = String(st.metal);
+
+function wl2rgb(nm) {
+  let r = 0, g = 0, b = 0;
+  if (nm < 440) { r = -(nm - 440) / 60; b = 1; } else if (nm < 490) { g = (nm - 440) / 50; b = 1; }
+  else if (nm < 510) { g = 1; b = -(nm - 510) / 20; } else if (nm < 580) { r = (nm - 510) / 70; g = 1; }
+  else if (nm < 645) { r = 1; g = -(nm - 645) / 65; } else r = 1;
+  const f = nm < 420 ? 0.3 + 0.7 * (nm - 380) / 40 : nm > 680 ? 0.3 + 0.7 * (750 - nm) / 70 : 1;
+  return [r * f, g * f, b * f];
+}
+const lineColor = nm => nm < 380 ? '#7c3aed' : nm > 760 ? '#991b1b' : `rgb(${wl2rgb(nm).map(v => Math.round(Math.max(0, v) * 255))})`;
+const band = nm => nm < 380 ? '紫外' : nm > 760 ? '红外' : '可见光';
+
+// ---------- 光电效应 ----------
+const W0 = () => METALS[st.metal][1];
+const Ekm = (nu = st.nu, m = st.metal) => nu * HNU - METALS[m][1];
+function cur(U, nu = st.nu, I = st.I, m = st.metal) {
+  const Ek = Ekm(nu, m);
+  if (Ek <= 0) return 0;
+  const Is = 2 * I;
+  if (U >= 0) return Is * (1 - 0.4 * Math.exp(-U / 0.6));
+  if (U <= -Ek) return 0;
+  return Is * 0.6 * (1 + U / Ek);
+}
+let parts = [], spawnAcc = 0, clock = 0;
+function stepParts(dt) {
+  const Ek = Ekm();
+  if (Ek > 0) {
+    spawnAcc += dt * st.I * 10;
+    while (spawnAcc >= 1) {
+      spawnAcc -= 1;
+      const stray = Math.random() < 0.4 * Math.exp(-Math.max(st.U, 0) / 0.6);
+      parts.push({ x: 0, y: (Math.random() - 0.5) * 0.8, v: 0.8 * Math.sqrt(Math.random() * Ek), vy: stray ? (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.4) : 0 });
+    }
+  }
+  const a = 0.32 * st.U;
+  for (const p of parts) { p.v += a * dt; p.x += p.v * dt; p.y += p.vy * dt; }
+  parts = parts.filter(p => p.x >= 0 && p.x <= 1 && Math.abs(p.y) < 1.1);
+}
+
+// ---------- 氢原子 ----------
+const En = n => -13.6 / (n * n);
+const dE1 = n => 13.6 * (1 - 1 / (n * n));
+function absorbState() {
+  if (st.lv === 'emit') return { nTop: st.n, ok: true };
+  const E = st.E;
+  if (E >= 13.6) return { nTop: 1, ion: true, left: E - 13.6, ok: true };
+  if (st.kind === 'photon') {
+    for (let n = 2; n <= 6; n++) if (Math.abs(E - dE1(n)) < 0.015) return { nTop: n, ok: true, left: 0 };
+    return { nTop: 1, ok: false };
+  }
+  let n = 1;
+  while (n < 6 && dE1(n + 1) <= E + 1e-9) n++;
+  return { nTop: n, ok: n > 1, left: E - dE1(n) };
+}
+function linesOf(nTop) {
+  const out = [];
+  for (let k = 1; k < nTop; k++) for (let m = k + 1; m <= nTop; m++) { const E = En(m) - En(k); out.push({ m, k, E, nm: HC / E }); }
+  return out;
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+let arrowHits = [];
+
+function drawPhoto(c, W, H) {
+  const cx = W * 0.45, cy = H * 0.4, rx = Math.min(W * 0.26, 260), ry = Math.min(H * 0.22, 130);
+  const xK = cx - rx * 0.62, xA = cx + rx * 0.6;
+  const X = x => xK + x * (xA - xK), Y = y => cy + y * ry * 0.55;
+  const nm = 3000 / st.nu, col = lineColor(nm), Ek = Ekm();
+  // 灯与光束
+  const lamp = [Math.max(40, xK - 170), cy - ry * 0.45];
+  c.save(); c.globalAlpha = 0.15 + 0.06 * st.I; c.fillStyle = col;
+  c.beginPath(); c.moveTo(lamp[0], lamp[1]); c.lineTo(xK - 4, cy - ry * 0.55); c.lineTo(xK - 4, cy + ry * 0.55); c.closePath(); c.fill(); c.restore();
+  dot(c, lamp[0], lamp[1], 14, '#fef3c7', '#92400e');
+  text(c, nm < 380 ? '紫外线' : '光源', lamp[0], lamp[1] - 24, '#92400e', { bold: true, size: 12 });
+  for (let i = 0; i < st.I * 4; i++) {
+    const f = ((clock * 0.8 + i / (st.I * 4)) % 1), yy = cy + ((i * 0.618) % 1 - 0.5) * ry * 1.0 * f;
+    dot(c, lamp[0] + f * (xK - lamp[0]), lamp[1] + f * (yy - lamp[1]), 2.5, col);
+  }
+  // 光电管
+  c.beginPath(); c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); c.fillStyle = 'rgba(219,234,254,0.35)'; c.fill(); c.strokeStyle = '#94a3b8'; c.lineWidth = 2; c.stroke();
+  c.beginPath(); c.arc(xK - ry * 0.9, cy, ry * 0.95, -0.6, 0.6); c.strokeStyle = '#334155'; c.lineWidth = 6; c.stroke();
+  line(c, xA, cy - ry * 0.45, xA, cy + ry * 0.45, '#334155', 5);
+  text(c, 'K', xK - 18, cy - ry * 0.7, '#111827', { bold: true, size: 15 }); text(c, 'A', xA + 14, cy - ry * 0.55, '#111827', { bold: true, size: 15 });
+  for (const p of parts) dot(c, X(p.x), Y(p.y), 3, '#2563eb');
+  // 电路
+  const yb = cy + ry + 70;
+  line(c, xK - 3, cy + ry * 0.5, xK - 3, yb, '#374151', 2); line(c, xA, cy + ry * 0.45, xA, yb, '#374151', 2);
+  const bx = cx - 60;
+  line(c, xK - 3, yb, bx - 8, yb, '#374151', 2); line(c, bx + 8, yb, xA - 70, yb, '#374151', 2); line(c, xA - 30, yb, xA, yb, '#374151', 2);
+  const fwd = st.U >= 0, plate = (x, plus) => plus ? line(c, x, yb - 18, x, yb + 18, '#111827', 2) : line(c, x, yb - 9, x, yb + 9, '#111827', 5);
+  plate(bx - 8, !fwd); plate(bx + 8, fwd);
+  text(c, fwd ? '−' : '+', bx - 22, yb - 20, '#111827', { bold: true, size: 15 }); text(c, fwd ? '+' : '−', bx + 22, yb - 20, '#111827', { bold: true, size: 15 });
+  text(c, fwd ? '正向电压：A 接正极，电子被加速' : '反向电压：A 接负极，电子被减速', bx, yb + 34, fwd ? '#16a34a' : '#dc2626', { bold: true, size: 13 });
+  const gx = xA - 50, I = cur(st.U);
+  dot(c, gx, yb, 18, '#fff', '#374151');
+  const ang = -Math.PI / 2 + Math.min(1, I / 10) * 1.1;
+  line(c, gx, yb + 8, gx + 14 * Math.cos(ang), yb + 8 + 14 * Math.sin(ang), '#dc2626', 2);
+  text(c, 'G', gx, yb + 30, '#374151', { bold: true, size: 12 });
+  text(c, `I = ${fmt(I, 2)} μA`, xA + 20, yb, '#dc2626', { bold: true, size: 14, align: 'left' });
+  text(c, `ν = ${fmt(st.nu, 1)}×10¹⁴ Hz（λ = ${fmt(nm, 0)} nm）  hν = ${fmt(st.nu * HNU, 2)} eV  U_AK = ${fmt(st.U, 2)} V`, 14, 20, '#111827', { bold: true, size: 14, align: 'left' });
+  if (Ek <= 0) text(c, `ν < 截止频率 ν_c = ${fmt(W0() / HNU, 2)}×10¹⁴ Hz：不发生光电效应，光再强也没有光电子`, 14, 46, '#dc2626', { bold: true, size: 14, align: 'left' });
+  else text(c, `光电子最大初动能 E_k = hν − W₀ = ${fmt(Ek, 2)} eV`, 14, 46, '#2563eb', { bold: true, size: 14, align: 'left' });
+}
+
+function drawLevel(c, W, H) {
+  const yT = 78, yB = H - 50, x0 = 90, x1 = W - 40;
+  const Y = E => yB - Math.pow((E + 13.6) / 13.6, 4) * (yB - yT);
+  const ab = absorbState(), ls = linesOf(ab.nTop);
+  for (let n = 1; n <= 6; n++) {
+    line(c, x0, Y(En(n)), x1, Y(En(n)), n <= ab.nTop ? '#111827' : '#9ca3af', n === 1 ? 2.5 : 1.5);
+    text(c, `n = ${n}`, x0 - 10, Y(En(n)), '#111827', { bold: true, size: 12, align: 'right' });
+    text(c, `${fmt(En(n), 2)} eV`, x1, Y(En(n)) - 9, '#6b7280', { size: 11, align: 'right' });
+  }
+  line(c, x0, Y(0), x1, Y(0), '#9ca3af', 1, [5, 4]);
+  text(c, 'n = ∞', x0 - 10, Y(0), '#6b7280', { size: 12, align: 'right' }); text(c, '0 eV', x1, Y(0) - 9, '#6b7280', { size: 11, align: 'right' });
+  arrowHits = [];
+  const ax0 = x0 + (W - x0) * 0.22, ax1 = x1 - 60;
+  ls.forEach((L, i) => {
+    const x = ls.length === 1 ? (ax0 + ax1) / 2 : ax0 + (ax1 - ax0) * i / (ls.length - 1);
+    const sel = st.sel && st.sel[0] === L.m && st.sel[1] === L.k;
+    const y1 = Y(En(L.m)), y2 = Y(En(L.k));
+    vec(c, x, y1, x, y2, lineColor(L.nm), sel ? 4.5 : 2.2, sel ? 12 : 9);
+    if (sel || ls.length <= 6) text(c, `${fmt(L.E, 2)}`, x + 4, y1 + (y2 - y1) * 0.3, lineColor(L.nm), { bold: true, size: 11, align: 'left' });
+    arrowHits.push({ x, y1, y2, m: L.m, k: L.k });
+  });
+  if (ab.nTop > 1 || st.lv === 'absorb') dot(c, x0 + 26, Y(En(ab.nTop)), 7, '#ea580c', '#7c2d12');
+  if (st.lv === 'absorb') {
+    const xi = x0 + 26, yg = Y(En(1));
+    const f = (clock * 0.6) % 1, sx = 14 + f * (xi - 14 - 14);
+    if (st.kind === 'photon') {
+      c.beginPath(); for (let j = 0; j <= 30; j++) { const xx = sx - 40 + j * 40 / 30; const yy = yg - 30 + 5 * Math.sin(j * 1.2); j ? c.lineTo(xx, yy) : c.moveTo(xx, yy); }
+      c.strokeStyle = '#f59e0b'; c.lineWidth = 2; c.stroke();
+    } else dot(c, sx, yg - 30, 5, '#2563eb', '#1e3a8a');
+    text(c, `${st.kind === 'photon' ? '光子' : '电子'} ${fmt(st.E, 2)} eV`, 14, 46, st.kind === 'photon' ? '#b45309' : '#1d4ed8', { bold: true, size: 14, align: 'left' });
+    if (ab.ion) text(c, `E ≥ 13.6 eV：原子电离，电子带走 ${fmt(ab.left, 2)} eV 动能`, 14, 20, '#dc2626', { bold: true, size: 14, align: 'left' });
+    else if (!ab.ok) text(c, st.kind === 'photon' ? '光子能量不等于任何能级差 → 不被吸收（光子只能整个被吸收）' : '电子能量小于 10.2 eV，不能使基态原子跃迁', 14, 20, '#dc2626', { bold: true, size: 14, align: 'left' });
+    else {
+      vec(c, x0 + 46, Y(En(1)), x0 + 46, Y(En(ab.nTop)), '#ea580c', 2.4, 9);
+      text(c, `吸收 ${fmt(dE1(ab.nTop), 2)} eV，跃迁到 n = ${ab.nTop}${st.kind === 'electron' && ab.left > 1e-9 ? `，电子剩余 ${fmt(ab.left, 2)} eV` : ''}`, 14, 20, '#ea580c', { bold: true, size: 14, align: 'left' });
+    }
+  } else text(c, `一群处于 n = ${st.n} 的氢原子，最多辐射 C(${st.n},2) = ${ls.length} 种频率的光`, 14, 20, '#111827', { bold: true, size: 14, align: 'left' });
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  if (st.mode === 'photo') drawPhoto(c, W, H); else drawLevel(c, W, H);
+}
+$('cv').addEventListener('pointerdown', e => {
+  if (st.mode !== 'level') return;
+  const r = $('cv').getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  const h = arrowHits.find(a => Math.abs(px - a.x) < 12 && py > Math.min(a.y1, a.y2) - 6 && py < Math.max(a.y1, a.y2) + 6);
+  if (h) { st.sel = [h.m, h.k]; render(); }
+});
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2;
+  chartView.begin();
+  if (st.mode === 'photo') {
+    const Us = Array.from({ length: 401 }, (_, j) => -4 + 10 * j / 400);
+    const series = st.ghosts.map((g, i) => ({ pts: Us.map(u => [u, cur(u, g.nu, g.I, g.metal)]), color: GHOST[i % GHOST.length], dash: [5, 4], label: g.label }));
+    series.push({ pts: Us.map(u => [u, cur(u)]), color: '#dc2626', label: '当前' });
+    const Ek = Ekm();
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: -4, xmax: 6, ymin: 0, ymax: 11, xlabel: 'U_AK / V', ylabel: 'I / μA', legendX: 60, series,
+      vlines: Ek > 0 ? [{ x: -Ek, color: '#7c3aed', label: `−U_c = −${fmt(Ek, 2)} V` }] : [],
+      hlines: Ek > 0 ? [{ y: 2 * st.I, color: '#9ca3af', label: `饱和电流 ${fmt(2 * st.I, 1)} μA` }] : [],
+      points: [{ x: st.U, y: cur(st.U), color: '#dc2626' }],
+    });
+    const ser2 = METALS.map(([nm, w], i) => ({ pts: [[w / HNU, 0], [15, 15 * HNU - w]], color: i === st.metal ? '#2563eb' : '#d1d5db', width: i === st.metal ? 2.6 : 1.5 }));
+    ser2.push({ pts: [[0, -W0()], [W0() / HNU, 0]], color: '#2563eb', dash: [4, 4], width: 1.4, label: '延长线：纵截距 −W₀' });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 15, ymin: -4, ymax: 3.5, xlabel: 'ν / 10¹⁴ Hz', ylabel: 'E_k / eV', legendX: 70, series: ser2,
+      vlines: [{ x: W0() / HNU, color: '#2563eb', label: `ν_c = ${fmt(W0() / HNU, 2)}` }],
+      points: [{ x: st.nu, y: Math.max(0, Ek), color: Ek > 0 ? '#dc2626' : '#9ca3af', label: Ek > 0 ? '' : '无光电子' }, { x: 0, y: -W0(), color: '#2563eb', r: 4, label: `−${W0()} eV` }],
+    });
+  } else {
+    const ab = absorbState(), ls = linesOf(ab.nTop);
+    // 光谱（对数波长）
+    const bx0 = 50, bx1 = half - 20, by0 = 40, by1 = H - 50;
+    const lmin = Math.log10(80), lmax = Math.log10(2000), LX = nm => bx0 + (Math.log10(nm) - lmin) / (lmax - lmin) * (bx1 - bx0);
+    text(c, '谱线位置（波长取对数刻度）', bx0, 16, '#374151', { bold: true, size: 12, align: 'left' });
+    c.fillStyle = '#111827'; c.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+    const grd = c.createLinearGradient(LX(400), 0, LX(700), 0);
+    [400, 450, 500, 550, 600, 650, 700].forEach((nm, i) => grd.addColorStop(i / 6, lineColor(nm)));
+    c.save(); c.globalAlpha = 0.18; c.fillStyle = grd; c.fillRect(LX(400), by0, LX(700) - LX(400), by1 - by0); c.restore();
+    for (const L of ls) {
+      const sel = st.sel && st.sel[0] === L.m && st.sel[1] === L.k;
+      line(c, LX(L.nm), by0, LX(L.nm), by1, lineColor(L.nm), sel ? 5 : 2.5);
+      if (sel) text(c, `${L.m}→${L.k}  ${fmt(L.nm, 0)} nm`, LX(L.nm), by0 - 10, '#111827', { bold: true, size: 12 });
+    }
+    for (const nm of [100, 200, 400, 700, 1000, 2000]) { line(c, LX(nm), by1, LX(nm), by1 + 5, '#6b7280'); text(c, `${nm}`, LX(nm), by1 + 14, '#6b7280', { size: 11 }); }
+    text(c, 'λ / nm', bx1, by1 + 30, '#374151', { size: 12, align: 'right' });
+    text(c, '紫外（莱曼系）', LX(105), by1 + 30, '#7c3aed', { size: 11 }); text(c, '可见（巴耳末系）', LX(530), by1 + 30, '#16a34a', { size: 11 });
+    // 光子能量与逸出功
+    const sorted = ls.slice().sort((a, b) => b.E - a.E);
+    const w = W0();
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: Math.max(sorted.length, 1) + 1, ymin: 0, ymax: 14, xlabel: '', ylabel: '光子能量 / eV', legendX: 110, xfmt: () => '',
+      series: [{ pts: [[0, w], [sorted.length + 1, w]], color: '#dc2626', dash: [5, 4], width: 1.4, label: `${METALS[st.metal][0]} W₀ = ${w} eV` }]
+        .concat(sorted.map((L, i) => ({ pts: [[i + 1, 0], [i + 1, L.E]], color: L.E > w ? '#16a34a' : '#9ca3af', width: 10 }))),
+      points: sorted.map((L, i) => ({ x: i + 1, y: L.E, color: L.E > w ? '#16a34a' : '#6b7280', r: 3, label: `${L.m}→${L.k}` })),
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  photo: [
+    '光电子的最大初动能随入射光频率增大而增大，与光强无关；ν < ν_c 时无论光多强、照多久都不发生光电效应。',
+    '光强（单位时间光子数）只影响饱和电流：光越强，饱和电流越大。',
+    '遏止电压 U_c = (hν − W₀)/e：同一金属、同一频率，U_c 相同。I–U 图中曲线与横轴的交点就是 −U_c。',
+    'E_k–ν 图像（或 U_c–ν 图像）：斜率为 h（或 h/e），横截距为截止频率 ν_c，纵截距为 −W₀。不同金属的图线互相平行。',
+    '光电效应是瞬时的，不需要积累能量的时间——这是光的粒子性的证据。',
+  ],
+  level: [
+    '一群处于第 n 能级的氢原子最多辐射 C(n,2) = n(n−1)/2 种光；一个氢原子最多辐射 n − 1 种。',
+    '光子能量必须恰好等于两能级差才能被吸收（电离除外：E ≥ 13.6 eV 都能使基态电离）。',
+    '电子碰撞可以只交出一部分能量：只要电子动能 ≥ 能级差，就能使原子跃迁。',
+    '跃迁到高能级：电子轨道半径变大，动能减小，电势能增大，原子总能量增大。',
+    '从 n → 1 能量最大、波长最短；从 n → n−1 能量最小、波长最长。巴耳末系（跃迁到 n = 2）中有 4 条可见光。',
+  ],
+};
+const C2 = n => n * (n - 1) / 2;
+function updatePanel() {
+  $('photoPanel').style.display = st.mode === 'photo' ? '' : 'none';
+  $('levelPanel').style.display = st.mode === 'level' ? '' : 'none';
+  $('emitRow').style.display = st.lv === 'emit' ? '' : 'none';
+  $('absorbRows').style.display = st.lv === 'absorb' ? '' : 'none';
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  let rows = '', html = '';
+  if (st.mode === 'photo') {
+    $('hint').textContent = '蓝点是光电子；改变 U_AK、光强和频率，看电流表和 I–U 曲线';
+    const E = st.nu * HNU, Ek = Ekm(), nc = W0() / HNU;
+    rows = `<tr><td>光子能量 hν</td><td>${fmt(E, 3)} eV</td></tr><tr><td>逸出功 W₀（${METALS[st.metal][0]}）</td><td>${W0()} eV</td></tr>
+      <tr><td>截止频率 ν_c = W₀/h</td><td>${fmt(nc, 2)}×10¹⁴ Hz</td></tr><tr><td>最大初动能 E_k</td><td>${Ek > 0 ? fmt(Ek, 3) + ' eV' : '—'}</td></tr>
+      <tr><td>遏止电压 U_c</td><td>${Ek > 0 ? fmt(Ek, 3) + ' V' : '—'}</td></tr><tr><td>光电流 I</td><td>${fmt(cur(st.U), 2)} μA</td></tr>`;
+    html = `<div class="node"><span class="f">ε = hν</span> = 4.136×10⁻¹⁵ eV·s × ${fmt(st.nu, 1)}×10¹⁴ Hz = <span class="v">${fmt(E, 3)} eV</span></div>
+      <div class="link">↓ 与逸出功比较</div>`;
+    if (Ek <= 0) html += `<div class="node"><span class="v">hν = ${fmt(E, 2)} eV < W₀ = ${W0()} eV</span><br><span class="n">一个电子一次只吸收一个光子，光子能量不够就逸不出来；增大光强只是光子更多，没有用。</span></div>`;
+    else {
+      html += `<div class="node"><span class="f">E_k = hν − W₀</span> = ${fmt(E, 3)} − ${W0()} = <span class="v">${fmt(Ek, 3)} eV</span></div>
+        <div class="link">↓ 反向电压恰好使光电流为零</div>
+        <div class="node"><span class="f">eU_c = E_k</span> → <span class="v">U_c = ${fmt(Ek, 3)} V</span><br><span class="n">${st.U < 0 ? (st.U <= -Ek ? '现在反向电压已达到 U_c，最快的电子也到不了 A，电流为零。' : `反向电压 ${fmt(-st.U, 2)} V：初动能大于 ${fmt(-st.U, 2)} eV 的电子才能到达 A。`) : '正向电压越大，到达 A 的电子越多，最终达到饱和电流。'}</span></div>
+        <div class="link">↓ 饱和电流</div>
+        <div class="node"><span class="f">I_饱和 ∝ 光强</span>：当前 <span class="v">${fmt(2 * st.I, 1)} μA</span><br><span class="n">把"光强"拖大，饱和电流变大，但 −U_c 不动。</span></div>`;
+    }
+    if (st.ghosts.length) html += `<div class="node"><span class="n">已记下的曲线：${st.ghosts.map(g => `${g.label}（U_c = ${Ekm(g.nu, g.metal) > 0 ? fmt(Ekm(g.nu, g.metal), 2) + ' V' : '无'}）`).join('；')}</span></div>`;
+  } else {
+    const ab = absorbState(), ls = linesOf(ab.nTop), w = W0();
+    if (!st.sel || !ls.some(L => L.m === st.sel[0] && L.k === st.sel[1])) st.sel = ls.length ? [ls[ls.length - 1].m, ls[ls.length - 1].k] : null;
+    $('hint').textContent = '箭头颜色就是光的颜色：紫色 = 紫外，暗红 = 红外；点击箭头选中谱线';
+    rows = `<tr><td><b>跃迁</b></td><td style="text-align:right"><b>hν / eV</b></td><td style="text-align:right"><b>λ / nm</b></td><td><b>光电效应</b></td></tr>` +
+      ls.slice().sort((a, b) => b.E - a.E).map(L => `<tr><td>${L.m} → ${L.k}（${band(L.nm)}）</td><td style="text-align:right">${fmt(L.E, 2)}</td><td style="text-align:right">${fmt(L.nm, 0)}</td><td>${L.E > w ? '能' : '不能'}</td></tr>`).join('');
+    if (st.lv === 'absorb') {
+      html = `<div class="node"><span class="f">基态 E₁ = −13.6 eV</span>，到各能级所需能量：${[2, 3, 4, 5].map(n => `n=${n}：${fmt(dE1(n), 2)}`).join('，')} eV</div><div class="link">↓ ${st.kind === 'photon' ? '光子：只能整个被吸收' : '电子：可以交出一部分动能'}</div>`;
+      if (ab.ion) html += `<div class="node"><span class="v">E = ${fmt(st.E, 2)} eV ≥ 13.6 eV → 电离</span>，电离后电子动能 = ${fmt(st.E, 2)} − 13.6 = <span class="v">${fmt(ab.left, 2)} eV</span></div>`;
+      else if (!ab.ok) html += `<div class="node"><span class="v">${st.kind === 'photon' ? `${fmt(st.E, 2)} eV 不等于任何 E_n − E₁，光子不被吸收` : '电子能量不足 10.2 eV，原子不跃迁'}</span>${st.kind === 'photon' && st.E > 10.2 ? '<br><span class="n">换成同样能量的电子去碰撞，就能使原子跃迁（切换"用电子碰撞"看看）。</span>' : ''}</div>`;
+      else html += `<div class="node"><span class="v">跃迁到 n = ${ab.nTop}</span>${st.kind === 'electron' ? `：E_${ab.nTop} − E₁ = ${fmt(dE1(ab.nTop), 2)} eV ≤ ${fmt(st.E, 2)} eV < ${ab.nTop < 6 ? fmt(dE1(ab.nTop + 1), 2) : '13.6'} eV，电子剩余 ${fmt(ab.left, 2)} eV` : `：${fmt(st.E, 2)} eV = E_${ab.nTop} − E₁`}</div>
+        <div class="link">↓ 这群原子再向低能级跃迁</div><div class="node"><span class="f">C(${ab.nTop},2)</span> = <span class="v">${ls.length} 种光</span></div>`;
+    } else html = `<div class="node"><span class="f">C(n,2) = n(n−1)/2</span> = ${st.n}×${st.n - 1}/2 = <span class="v">${ls.length} 种</span></div>`;
+    if (ls.length) {
+      const mx = ls.reduce((a, b) => (b.E > a.E ? b : a)), mn = ls.reduce((a, b) => (b.E < a.E ? b : a)), ok = ls.filter(L => L.E > w);
+      html += `<div class="link">↓ 能量最大与最小</div>
+        <div class="node"><span class="f">${mx.m}→${mx.k}</span>：hν = ${fmt(En(mx.m), 2)} − (${fmt(En(mx.k), 2)}) = <span class="v">${fmt(mx.E, 2)} eV，λ 最短 ${fmt(mx.nm, 0)} nm</span><br>
+        <span class="f">${mn.m}→${mn.k}</span>：hν = <span class="v">${fmt(mn.E, 2)} eV，λ 最长 ${fmt(mn.nm, 0)} nm</span></div>
+        <div class="link">↓ 照射${METALS[st.metal][0]}（W₀ = ${w} eV）</div>
+        <div class="node">能发生光电效应的有 <span class="v">${ok.length} 种</span>（hν > W₀）${ok.length ? `；光电子最大初动能 E_k = ${fmt(mx.E, 2)} − ${w} = <span class="v">${fmt(mx.E - w, 2)} eV</span>` : ''}</div>`;
+      const s = ls.find(L => L.m === st.sel[0] && L.k === st.sel[1]);
+      if (s) html += `<div class="link">↓ 选中的谱线</div><div class="node"><span class="f">${s.m} → ${s.k}</span>：hν = ${fmt(s.E, 3)} eV，<span class="f">λ = hc/E</span> = 1240/${fmt(s.E, 3)} = <span class="v">${fmt(s.nm, 1)} nm（${band(s.nm)}）</span></div>`;
+    }
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+const anim = Lab.loop(dt => {
+  clock += dt;
+  if (st.mode === 'photo') stepParts(dt);
+  draw();
+});
+
+const RNG = { nu: v => `${fmt(v, 1)}×10¹⁴ Hz`, I: v => fmt(v, 1), U: v => `${fmt(v, 2)} V`, n: v => `n = ${v}`, E: v => `${fmt(v, 2)} eV` };
+Object.keys(RNG).forEach(k => Lab.range(k, RNG[k], v => { st[k] = v; render(); }));
+Lab.radios('mode', m => { st.mode = m; parts = []; render(); });
+Lab.radios('lv', v => { st.lv = v; render(); });
+Lab.radios('kind', v => { st.kind = v; render(); });
+$('metal').addEventListener('change', () => { st.metal = +$('metal').value; parts = []; render(); });
+$('keep').addEventListener('click', () => {
+  if (st.ghosts.length >= 4) st.ghosts.shift();
+  st.ghosts.push({ nu: st.nu, I: st.I, metal: st.metal, label: `ν=${fmt(st.nu, 1)} 光强${fmt(st.I, 1)} ${METALS[st.metal][0]}` });
+  render();
+});
+$('clear').addEventListener('click', () => { st.ghosts = []; render(); });
+
+const g = (nu, I, metal) => ({ nu, I, metal, label: `ν=${fmt(nu, 1)} 光强${fmt(I, 1)} ${METALS[metal][0]}` });
+const PRESETS = [
+  ['同频率、不同光强', { mode: 'photo', metal: 2, nu: 7.5, I: 4.5, U: 2, ghosts: [g(7.5, 2, 2)] }],
+  ['不同频率：遏止电压不同', { mode: 'photo', metal: 2, nu: 9, I: 3, U: 2, ghosts: [g(7, 3, 2)] }],
+  ['频率低于截止频率', { mode: 'photo', metal: 2, nu: 5, I: 5, U: 2, ghosts: [] }],
+  ['测遏止电压', { mode: 'photo', metal: 2, nu: 8, I: 3, U: -(8 * HNU - 2.29), ghosts: [] }],
+  ['E_k–ν 图像：斜率 h', { mode: 'photo', metal: 4, nu: 12, I: 3, U: 1, ghosts: [] }],
+  ['一群 n=4：几种光', { mode: 'level', lv: 'emit', n: 4, metal: 2 }],
+  ['照射钙：能发生光电效应的有几种', { mode: 'level', lv: 'emit', n: 4, metal: 3 }],
+  ['12.09 eV 光子照射基态', { mode: 'level', lv: 'absorb', kind: 'photon', E: 12.09, metal: 2 }],
+  ['12.5 eV 光子：不吸收', { mode: 'level', lv: 'absorb', kind: 'photon', E: 12.5, metal: 2 }],
+  ['12.5 eV 电子碰撞', { mode: 'level', lv: 'absorb', kind: 'electron', E: 12.5, metal: 2 }],
+  ['14 eV 光子：电离', { mode: 'level', lv: 'absorb', kind: 'photon', E: 14, metal: 2 }],
+];
+PRESETS.forEach(([name, o]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, JSON.parse(JSON.stringify(o)));
+    st.sel = null; parts = [];
+    Lab.setRadio('mode', st.mode); Lab.setRadio('lv', st.lv); Lab.setRadio('kind', st.kind); $('metal').value = String(st.metal);
+    Object.keys(RNG).forEach(k => Lab.setRange(k, st[k]));
+    render();
+  });
+  $('presets').appendChild(btn);
+});
+render();
+anim.start();
+</script>
+</body>
+</html>

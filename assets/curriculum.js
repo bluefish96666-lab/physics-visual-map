@@ -49,6 +49,7 @@ window.LABS = {
   'wave': { name: '机械波：图像、多解与干涉', desc: '同侧法、波动图像与振动图像、两时刻波形多解、干涉加强点', icon: '〰' },
   'light': { name: '光的折射、全反射与双缝干涉', desc: '半圆砖临界角、平行玻璃砖侧移、三棱镜偏向角、Δx = lλ/d', icon: '◭' },
   'gas': { name: '气体实验定律与热力学第一定律', desc: '水银柱转动与溢出、汽缸卡口分段加热、p–V 循环判断吸放热', icon: '♨' },
+  'quantum': { name: '光电效应与氢原子能级', desc: 'I–U 曲线与遏止电压、E_k–ν 图像、一群原子跃迁几种光、光子与电子激发', icon: '⚛' },
   'collision': { name: '碰撞与动量守恒', desc: '弹性与非弹性碰撞、弹簧连接体、子弹打木块', icon: '⇄' },
   'capacitor': { name: '电容器的动态分析', desc: '拖动极板、插电介质，对比 U 不变和 Q 不变两种情况', icon: '▥' },
   'voltammetry': { name: '伏安法测电阻', desc: '电流表内接、外接的误差对比，试触法选择接法', icon: 'Ⓐ' },
@@ -375,7 +376,7 @@ window.CURRICULUM = [
         phet: ['energy-forms-and-changes'],
       },
       {
-        id: 'b6c4', num: '第四章', title: '原子结构和波粒二象性', domain: 'modern', fig: 'levels',
+        id: 'b6c4', num: '第四章', title: '原子结构和波粒二象性', domain: 'modern', fig: 'levels', labs: ['quantum'],
         sections: [
           ['普朗克黑体辐射理论', '能量子：能量只能是最小能量值的整数倍。', 'ε = hν'],
           ['光电效应', '光电子的最大初动能与入射光频率有关、与光强无关；存在截止频率。', 'E_k = hν − W₀，eU_c = E_k'],

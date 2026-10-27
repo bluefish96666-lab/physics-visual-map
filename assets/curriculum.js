@@ -50,6 +50,7 @@ window.LABS = {
   'light': { name: '光的折射、全反射与双缝干涉', desc: '半圆砖临界角、平行玻璃砖侧移、三棱镜偏向角、Δx = lλ/d', icon: '◭' },
   'gas': { name: '气体实验定律与热力学第一定律', desc: '水银柱转动与溢出、汽缸卡口分段加热、p–V 循环判断吸放热', icon: '♨' },
   'quantum': { name: '光电效应与氢原子能级', desc: 'I–U 曲线与遏止电压、E_k–ν 图像、一群原子跃迁几种光、光子与电子激发', icon: '⚛' },
+  'nucleus': { name: '原子核衰变与半衰期', desc: '半衰期的统计规律、磁场中衰变径迹内切外切、α β 衰变次数', icon: '☢' },
   'collision': { name: '碰撞与动量守恒', desc: '弹性与非弹性碰撞、弹簧连接体、子弹打木块', icon: '⇄' },
   'capacitor': { name: '电容器的动态分析', desc: '拖动极板、插电介质，对比 U 不变和 Q 不变两种情况', icon: '▥' },
   'voltammetry': { name: '伏安法测电阻', desc: '电流表内接、外接的误差对比，试触法选择接法', icon: 'Ⓐ' },
@@ -388,7 +389,7 @@ window.CURRICULUM = [
         phet: ['models-of-the-hydrogen-atom'],
       },
       {
-        id: 'b6c5', num: '第五章', title: '原子核', domain: 'modern', fig: 'decay',
+        id: 'b6c5', num: '第五章', title: '原子核', domain: 'modern', fig: 'decay', labs: ['nucleus'],
         sections: [
           ['原子核的组成', '原子核由质子和中子组成；质量数 = 质子数 + 中子数。'],
           ['放射性元素的衰变', 'α 衰变、β 衰变前后质量数和电荷数都守恒；半衰期由原子核本身决定，与温度、压强、化学状态无关。', 'm = m₀(½)^(t/T½)'],

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原子核衰变与半衰期 · 交互实验</title>
+<link rel="stylesheet" href="../assets/lab.css">
+</head>
+<body>
+<div id="top"><a href="../index.html">← 知识地图</a><b>原子核衰变与半衰期</b><span class="crumb">选择性必修第三册 · 第五章 原子核</span></div>
+<div id="app">
+  <div id="left">
+    <div class="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div></div>
+    <div class="chartWrap"><canvas id="chart"></canvas></div>
+  </div>
+  <aside id="panel">
+    <div class="tip">衰变遵守<b>质量数守恒</b>和<b>电荷数守恒</b>。α 衰变：A − 4，Z − 2；β 衰变：A 不变，Z + 1。半衰期 <b>m = m₀(½)^(t/T)</b>，是大量原子核的统计规律。</div>
+
+    <h2>情境</h2>
+    <div class="row">
+      <label class="chk"><input type="radio" name="mode" value="half" checked>半衰期</label>
+      <label class="chk"><input type="radio" name="mode" value="track">磁场中的衰变径迹</label>
+      <label class="chk"><input type="radio" name="mode" value="chain">衰变次数</label>
+    </div>
+
+    <div id="halfPanel">
+      <div class="row">原子核个数 <select id="N0"><option value="4">4 个</option><option value="16">16 个</option><option value="100">100 个</option><option value="400" selected>400 个</option><option value="1600">1600 个</option></select><button id="reroll">重新随机</button></div>
+      <div class="row">半衰期 T <input type="range" id="T" min="1" max="10" step="0.5" value="4"><span class="val" id="Tv"></span></div>
+      <div class="row">环境温度 <input type="range" id="temp" min="-100" max="1000" step="10" value="20"><span class="val" id="tempv"></span></div>
+    </div>
+
+    <div id="trackPanel">
+      <div class="row">静止的原子核 <select id="nuc"></select></div>
+      <div class="row">
+        <label class="chk"><input type="radio" name="B" value="out" checked>B 垂直纸面向外</label>
+        <label class="chk"><input type="radio" name="B" value="in">B 垂直纸面向里</label>
+      </div>
+    </div>
+
+    <div id="chainPanel">
+      <div class="row">衰变系 <select id="series"></select></div>
+    </div>
+
+    <h2>高考题型</h2>
+    <div class="grid" id="presets"></div>
+
+    <h2>播放</h2>
+    <div class="row"><button class="primary" id="play" style="flex:1">▶ 开始</button><button id="slow">慢放 0.25×</button></div>
+    <div class="row">进程 <input type="range" id="tt" min="0" max="1000" step="1" value="0"><span class="val" id="ttv"></span></div>
+
+    <h2>当前数据</h2>
+    <table class="tbl" id="tbl"></table>
+
+    <h2>分析（数值随实验实时更新）</h2>
+    <div class="chain" id="chain"></div>
+
+    <h2>常用结论</h2>
+    <details open>
+      <summary>拖一拖，验证这些结论</summary>
+      <ul id="concl"></ul>
+    </details>
+  </aside>
+</div>
+
+<script src="../assets/lab.js"></script>
+<script>
+const { $, fmt, text, line, vec, dot } = Lab;
+const EL = { 1: 'H', 2: 'He', 6: 'C', 7: 'N', 27: 'Co', 28: 'Ni', 80: 'Hg', 81: 'Tl', 82: 'Pb', 83: 'Bi', 84: 'Po', 85: 'At', 86: 'Rn', 87: 'Fr', 88: 'Ra', 89: 'Ac', 90: 'Th', 91: 'Pa', 92: 'U', 93: 'Np', 94: 'Pu' };
+const SUP = s => String(s).replace(/\d/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+const SUB = s => String(s).replace(/\d/g, d => '₀₁₂₃₄₅₆₇₈₉'[d]);
+const nucl = (Z, A) => `${SUP(A)}${SUB(Z)}${EL[Z] || '?'}`;
+const NUCS = [
+  { Z: 92, A: 238, type: 'a', Q: 4.27 }, { Z: 88, A: 226, type: 'a', Q: 4.87 }, { Z: 84, A: 210, type: 'a', Q: 5.41 },
+  { Z: 90, A: 234, type: 'b', Q: 0.27 }, { Z: 6, A: 14, type: 'b', Q: 0.156 }, { Z: 27, A: 60, type: 'b', Q: 2.82 },
+];
+const U238 = 'abbaaaaabbabba';
+const SERIES = [
+  { name: '铀系 ²³⁸U → ²⁰⁶Pb', Z: 92, A: 238, Z2: 82, A2: 206, seq: U238 },
+  { name: '钍系 ²³²Th → ²⁰⁸Pb', Z: 90, A: 232, Z2: 82, A2: 208 },
+  { name: '锕系 ²³⁵U → ²⁰⁷Pb', Z: 92, A: 235, Z2: 82, A2: 207 },
+  { name: '²²⁶Ra → ²⁰⁶Pb', Z: 88, A: 226, Z2: 82, A2: 206 },
+  { name: '镎系 ²³⁷Np → ²⁰⁹Bi', Z: 93, A: 237, Z2: 83, A2: 209 },
+];
+SERIES.forEach(s => {
+  const na = (s.A - s.A2) / 4, nb = 2 * na - (s.Z - s.Z2);
+  s.na = na; s.nb = nb;
+  if (!s.seq) { let q = ''; let b = 0; for (let i = 0; i < na; i++) { q += 'a'; while (b < nb && (b + 1) * na <= (i + 1) * nb) { q += 'b'; b++; } } while (b++ < nb) q += 'b'; s.seq = q; }
+});
+$('nuc').innerHTML = NUCS.map((n, i) => `<option value="${i}">${nucl(n.Z, n.A)}（${n.type === 'a' ? 'α' : 'β'} 衰变）</option>`).join('');
+$('series').innerHTML = SERIES.map((s, i) => `<option value="${i}">${s.name}</option>`).join('');
+
+const st = { mode: 'half', N0: 400, T: 4, temp: 20, seed: 7, nuc: 0, B: 'out', series: 0, u: 0, speed: 1 };
+
+// ---------- 半衰期 ----------
+function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+let tau = [];
+function reroll() { const r = rng(st.seed * 7919 + st.N0); tau = Array.from({ length: st.N0 }, () => -st.T / Math.LN2 * Math.log(1 - r())); }
+const tMax = () => 5 * st.T;
+const alive = t => tau.reduce((a, x) => a + (x > t ? 1 : 0), 0);
+const LF = [0]; for (let i = 1; i <= 1600; i++) LF[i] = LF[i - 1] + Math.log(i);
+function binom(N, p) { return Array.from({ length: N + 1 }, (_, k) => Math.exp(LF[N] - LF[k] - LF[N - k] + k * Math.log(p) + (N - k) * Math.log(1 - p))); }
+
+// ---------- 径迹 ----------
+function trackInfo() {
+  const n = NUCS[st.nuc], a = n.type === 'a';
+  const Zd = a ? n.Z - 2 : n.Z + 1, Ad = a ? n.A - 4 : n.A;
+  const qp = a ? 2 : -1, mp = a ? 4 : 1 / 1836;
+  const rp = 1 / Math.abs(qp), rd = 1 / Zd;
+  const Ep = n.Q * Ad / (Ad + mp), Ed = n.Q * mp / (Ad + mp);
+  return { n, a, Zd, Ad, qp, mp, rp, rd, Ep, Ed };
+}
+
+// ---------- 衰变链 ----------
+function chainSteps() {
+  const s = SERIES[st.series], out = [{ Z: s.Z, A: s.A, kind: null }];
+  for (const k of s.seq) { const p = out[out.length - 1]; out.push(k === 'a' ? { Z: p.Z - 2, A: p.A - 4, kind: 'α' } : { Z: p.Z + 1, A: p.A, kind: 'β' }); }
+  return out;
+}
+
+// ---------- 画面 ----------
+const view = Lab.canvas($('cv'), () => draw());
+const ctx = view.ctx;
+
+function drawHalf(c, W, H) {
+  const t = st.u * tMax(), N = st.N0, side = Math.ceil(Math.sqrt(N));
+  const area = Math.min(W * 0.62, H - 115), cell = area / side, ox = 30, oy = 70;
+  const r = Math.min(26, Math.max(1.5, cell * 0.36));
+  for (let i = 0; i < N; i++) {
+    const x = ox + (i % side + 0.5) * cell, y = oy + (Math.floor(i / side) + 0.5) * cell;
+    const dead = tau[i] <= t, fresh = dead && t - tau[i] < st.T * 0.08;
+    dot(c, x, y, fresh ? r * 1.6 : r, dead ? (fresh ? '#fde047' : '#93c5fd') : '#f97316', N <= 100 ? (dead ? '#2563eb' : '#9a3412') : undefined);
+  }
+  const n = alive(t), th = N * Math.pow(0.5, t / st.T);
+  text(c, `t = ${fmt(t, 2)} 天 = ${fmt(t / st.T, 2)} T`, 14, 20, '#111827', { bold: true, size: 15, align: 'left' });
+  text(c, `剩余未衰变：${n} 个（理论值 N₀(½)^(t/T) = ${fmt(th, 1)}）`, 14, 46, '#c2410c', { bold: true, size: 14, align: 'left' });
+  const lx = ox + area + 30;
+  dot(c, lx, oy + 10, 7, '#f97316'); text(c, '未衰变的原子核', lx + 14, oy + 10, '#9a3412', { size: 13, align: 'left' });
+  dot(c, lx, oy + 36, 7, '#93c5fd'); text(c, '已衰变', lx + 14, oy + 36, '#1d4ed8', { size: 13, align: 'left' });
+  dot(c, lx, oy + 62, 7, '#fde047'); text(c, '刚刚衰变', lx + 14, oy + 62, '#a16207', { size: 13, align: 'left' });
+  text(c, `环境温度 ${st.temp} °C`, lx, oy + 110, '#374151', { bold: true, size: 13, align: 'left' });
+  text(c, '（改变温度、压强、化学状态，', lx, oy + 132, '#6b7280', { size: 12, align: 'left' });
+  text(c, '半衰期都不变）', lx, oy + 150, '#6b7280', { size: 12, align: 'left' });
+  if (N <= 16) { text(c, '原子核很少：每个核什么时候衰变', lx, oy + 190, '#dc2626', { bold: true, size: 13, align: 'left' }); text(c, '完全随机，半衰期规律不适用', lx, oy + 210, '#dc2626', { bold: true, size: 13, align: 'left' }); }
+}
+
+function drawTrack(c, W, H) {
+  const I = trackInfo(), sB = st.B === 'out' ? 1 : -1, sm = Math.min(I.rp, I.rd) / Math.max(I.rp, I.rd);
+  const R = Math.min(W * 0.32, (H - 130) / (I.a ? 2 + 2 * sm : 2));
+  const bigAbove = sB * Math.sign(I.qp) < 0;
+  const up = bigAbove ? 2 * R : (I.a ? 2 * sm * R : 0), down = (I.a ? 2 + 2 * sm : 2) * R - up;
+  const O = [W * 0.5, 80 + (H - 110 - up - down) / 2 + up];
+  for (let x = 30; x < W; x += 46) for (let y = 70; y < H - 20; y += 46) {
+    if (sB > 0) dot(c, x, y, 2, '#cbd5e1'); else { line(c, x - 4, y - 4, x + 4, y + 4, '#cbd5e1', 1.4); line(c, x - 4, y + 4, x + 4, y - 4, '#cbd5e1', 1.4); }
+  }
+  const big = Math.max(I.rp, I.rd), Rp = R * I.rp / big, Rd = R * I.rd / big;
+  // 粒子沿 +x 射出，子核沿 −x 反冲；屏幕 y 向下。正电荷向右运动且 B 向外时向下偏。
+  const cp = [O[0], O[1] + sB * Math.sign(I.qp) * Rp], cd = [O[0], O[1] - sB * Rd];
+  const tp = I.mp / Math.abs(I.qp), td = I.Ad / I.Zd, tm = Math.max(tp, td);
+  const Tp = Math.max(0.5, 5 * tp / tm), Td = Math.max(0.5, 5 * td / tm);
+  const t = st.u * 6;
+  const run = (C, Rr, a0, dir, T, col, lab) => {
+    c.beginPath(); c.arc(C[0], C[1], Math.max(Rr, 1.5), 0, Math.PI * 2); c.strokeStyle = col; c.globalAlpha = 0.25; c.lineWidth = 1.5; c.stroke(); c.globalAlpha = 1;
+    const ang = Math.min(t / T, 1) * Math.PI * 2;
+    c.beginPath(); c.arc(C[0], C[1], Math.max(Rr, 1.5), a0, a0 + dir * ang, dir < 0); c.strokeStyle = col; c.lineWidth = 2.6; c.stroke();
+    const e = a0 + dir * ang, P = [C[0] + Rr * Math.cos(e), C[1] + Rr * Math.sin(e)];
+    dot(c, P[0], P[1], 5, col);
+    text(c, lab, C[0] + Rr + 12, C[1], col, { bold: true, size: 13, align: 'left' });
+  };
+  // 起点 O 相对各自圆心的角度
+  const ap = Math.atan2(O[1] - cp[1], O[0] - cp[0]), ad = Math.atan2(O[1] - cd[1], O[0] - cd[0]);
+  // 粒子向 +x 运动：圆心在下方(屏幕)时顺时针(屏幕角度减小方向为逆时针)。用速度方向判断转向。
+  const dirOf = (C, v) => { const rx = O[0] - C[0], ry = O[1] - C[1]; return Math.sign(rx * v[1] - ry * v[0]) || 1; };
+  const sp = dirOf(cp, [1, 0]), sd = dirOf(cd, [-1, 0]);
+  run(cp, Rp, ap, sp, Tp, I.a ? '#dc2626' : '#2563eb', I.a ? `α 粒子 r₁` : `β 粒子（电子）r₁`);
+  run(cd, Rd, ad, sd, Td, '#16a34a', `新核 ${nucl(I.Zd, I.Ad)} r₂`);
+  dot(c, O[0], O[1], 5, '#111827');
+  text(c, 'O', O[0] - 12, O[1] - 10, '#111827', { bold: true, size: 13 });
+  text(c, `${nucl(I.n.Z, I.n.A)} → ${nucl(I.Zd, I.Ad)} + ${I.a ? '⁴₂He' : '⁰₋₁e'}`, 14, 20, '#111827', { bold: true, size: 15, align: 'left' });
+  text(c, I.a ? '两圆外切：α 粒子和新核都带正电，反向运动，受力方向相反' : '两圆内切：电子带负电、新核带正电，反向运动，受力方向相同', 14, 46, I.a ? '#b91c1c' : '#1d4ed8', { bold: true, size: 14, align: 'left' });
+  text(c, `r₁ : r₂ = ${fmt(I.rp / I.rd, 0)} : 1`, W - 14, 20, '#111827', { bold: true, size: 14, align: 'right' });
+}
+
+function drawChain(c, W, H) {
+  const s = SERIES[st.series], steps = chainSteps(), k = Math.round(st.u * (steps.length - 1));
+  const Zs = steps.map(p => p.Z), Ns = steps.map(p => p.A - p.Z);
+  const zmin = Math.min(...Zs) - 1, zmax = Math.max(...Zs) + 1, nmin = Math.min(...Ns) - 2, nmax = Math.max(...Ns) + 2;
+  const m = Lab.plot(c, { x: 0, y: 6, w: W * 0.72, h: H - 6 }, { xmin: zmin, xmax: zmax, ymin: nmin, ymax: nmax, xlabel: '质子数 Z', ylabel: '中子数 N', xticks: zmax - zmin, pad: { l: 56, r: 20, t: 30, b: 60 }, xfmt: v => `${Math.round(v)} ${EL[Math.round(v)] || ''}` });
+  for (let i = 1; i <= k; i++) {
+    const a = steps[i - 1], b = steps[i];
+    vec(c, m.X(a.Z), m.Y(a.A - a.Z), m.X(b.Z), m.Y(b.A - b.Z), b.kind === 'α' ? '#dc2626' : '#2563eb', 2.4, 9);
+  }
+  steps.forEach((p, i) => { if (i <= k) dot(c, m.X(p.Z), m.Y(p.A - p.Z), i === k ? 7 : 4, i === k ? '#ea580c' : '#374151'); });
+  const p = steps[k];
+  text(c, nucl(p.Z, p.A), m.X(p.Z) + 12, m.Y(p.A - p.Z) - 12, '#c2410c', { bold: true, size: 15, align: 'left' });
+  const na = steps.slice(1, k + 1).filter(q => q.kind === 'α').length, nb = k - na;
+  const lx = W * 0.74;
+  text(c, s.name, lx, 30, '#111827', { bold: true, size: 15, align: 'left' });
+  text(c, `已经过：α ${na} 次，β ${nb} 次`, lx, 58, '#374151', { bold: true, size: 14, align: 'left' });
+  vec(c, lx, 92, lx + 30, 122, '#dc2626', 2.4, 8); text(c, 'α：Z−2，N−2', lx + 38, 110, '#dc2626', { bold: true, size: 13, align: 'left' });
+  vec(c, lx, 150, lx + 30, 136, '#2563eb', 2.4, 8); text(c, 'β：Z+1，N−1', lx + 38, 145, '#2563eb', { bold: true, size: 13, align: 'left' });
+  text(c, '（中子变成质子 + 电子）', lx, 172, '#6b7280', { size: 12, align: 'left' });
+}
+
+function draw() {
+  if (!view.W) return;
+  const c = ctx, W = view.W, H = view.H;
+  view.begin();
+  if (st.mode === 'half') drawHalf(c, W, H); else if (st.mode === 'track') drawTrack(c, W, H); else drawChain(c, W, H);
+}
+
+// ---------- 曲线 ----------
+const chartView = Lab.canvas($('chart'), () => drawChart());
+function drawChart() {
+  if (!chartView.W) return;
+  const c = chartView.ctx, W = chartView.W, H = chartView.H, half = W / 2;
+  chartView.begin();
+  if (st.mode === 'half') {
+    const t = st.u * tMax(), N = st.N0, sorted = tau.slice().sort((a, b) => a - b);
+    const act = [[0, 1]]; sorted.forEach((x, i) => { if (x > tMax()) return; act.push([x, (N - i) / N]); act.push([x, (N - i - 1) / N]); }); act.push([tMax(), alive(tMax()) / N]);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: tMax(), ymin: 0, ymax: 1.1, xlabel: 't / 天', ylabel: 'N / N₀', legendX: 80,
+      series: [{ pts: Array.from({ length: 201 }, (_, j) => { const tt = tMax() * j / 200; return [tt, Math.pow(0.5, tt / st.T)]; }), color: '#9ca3af', dash: [5, 4], label: '(½)^(t/T)' }, { pts: act.filter(q => q[0] <= t).concat([[t, alive(t) / N]]), color: '#ea580c', label: '实际剩余' }],
+      vlines: [1, 2, 3, 4].map(n => ({ x: n * st.T, color: '#e5e7eb', label: n === 1 ? 'T' : `${n}T` })),
+      hlines: [{ y: 0.5, color: '#d1d5db' }, { y: 0.25, color: '#d1d5db' }, { y: 0.125, color: '#d1d5db' }],
+      points: [{ x: t, y: alive(t) / N, color: '#ea580c' }],
+    });
+    const P = binom(N, 0.5), pts = P.map((p, k) => [k / N, N <= 16 ? p : p * N]);
+    const top = Math.max(...pts.map(q => q[1]));
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 1, ymin: 0, ymax: top * 1.2, xlabel: '经过 1 个 T 后剩余的比例', ylabel: N <= 16 ? '概率' : '概率密度（越窄越"准"）', legendX: 400,
+      series: N <= 16 ? pts.map(q => ({ pts: [[q[0], 0], [q[0], q[1]]], color: '#2563eb', width: 6 })) : [{ pts, color: '#2563eb' }],
+      vlines: [{ x: 0.5, color: '#dc2626', label: '½' }],
+    });
+  } else if (st.mode === 'track') {
+    const I = trackInfo();
+    const ns = NUCS.map(n => { const a = n.type === 'a', Zd = a ? n.Z - 2 : n.Z + 1; return { lab: nucl(n.Z, n.A), ratio: a ? Zd / 2 : Zd, a }; });
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: ns.length + 1, ymin: 0, ymax: 100, xlabel: '', ylabel: 'r₁ / r₂ = q₂ / q₁（红 α，蓝 β）', legendX: 400, xticks: ns.length + 1,
+      xfmt: v => (ns[Math.round(v) - 1] || { lab: '' }).lab,
+      series: ns.map((q, i) => ({ pts: [[i + 1, 0], [i + 1, q.ratio]], color: i === st.nuc ? '#ea580c' : q.a ? '#fca5a5' : '#93c5fd', width: 12 })),
+      points: ns.map((q, i) => ({ x: i + 1, y: q.ratio, color: i === st.nuc ? '#ea580c' : '#6b7280', r: 3, label: `${q.ratio}` })),
+    });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: 3, ymin: 0, ymax: I.n.Q * 1.25, xlabel: '', ylabel: '动能 / MeV', legendX: 400, xfmt: () => '',
+      series: [{ pts: [[1, 0], [1, I.Ep]], color: I.a ? '#dc2626' : '#2563eb', width: 30 }, { pts: [[2, 0], [2, Math.max(I.Ed, I.n.Q * 0.004)]], color: '#16a34a', width: 30 }],
+      points: [{ x: 1, y: I.Ep, color: I.a ? '#dc2626' : '#2563eb', r: 2, label: `${I.a ? 'α' : 'e'}：${fmt(I.Ep, 3)}` }, { x: 2, y: I.Ed, color: '#16a34a', r: 2, label: `新核：${fmt(I.Ed, I.a ? 3 : 6)}` }],
+      hlines: [{ y: I.n.Q, color: '#111827', label: `Q = ${I.n.Q} MeV` }],
+    });
+  } else {
+    const steps = chainSteps(), k = Math.round(st.u * (steps.length - 1));
+    const A = steps.map((p, i) => [i, p.A]), Z = steps.map((p, i) => [i, p.Z]);
+    Lab.plot(c, { x: 0, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: steps.length - 1, ymin: Math.min(...A.map(q => q[1])) - 4, ymax: steps[0].A + 4, xlabel: '第几次衰变', ylabel: '质量数 A', legendX: 400,
+      series: [{ pts: A, color: '#d1d5db' }, { pts: A.slice(0, k + 1), color: '#dc2626', label: '' }],
+      points: [{ x: k, y: steps[k].A, color: '#dc2626', label: `A = ${steps[k].A}` }],
+    });
+    Lab.plot(c, { x: half, y: 0, w: half, h: H }, {
+      xmin: 0, xmax: steps.length - 1, ymin: Math.min(...Z.map(q => q[1])) - 2, ymax: Math.max(...Z.map(q => q[1])) + 2, xlabel: '第几次衰变', ylabel: '电荷数 Z', legendX: 400,
+      series: [{ pts: Z, color: '#d1d5db' }, { pts: Z.slice(0, k + 1), color: '#2563eb' }],
+      points: [{ x: k, y: steps[k].Z, color: '#2563eb', label: `Z = ${steps[k].Z}` }],
+    });
+  }
+}
+
+// ---------- 面板 ----------
+const CONCL = {
+  half: [
+    '经过 n 个半衰期，剩余 (½)ⁿ：1 个 T 剩 1/2，2 个 T 剩 1/4，3 个 T 剩 1/8。',
+    '半衰期由原子核内部决定，与温度、压强、是单质还是化合物都无关。',
+    '半衰期是大量原子核的统计规律：对几个原子核，无法预测什么时候衰变、经过 1 个 T 剩几个。',
+    '放射性测年：¹⁴C 的半衰期约 5730 年，测出剩余比例就能算出经过了几个半衰期。',
+  ],
+  track: [
+    '静止的核衰变：动量守恒，两粒子动量等大反向，p₁ = p₂。',
+    '在匀强磁场中 r = p/(qB)，动量相同时 r ∝ 1/q：电荷量小的 α 或 β 粒子半径大，新核半径小。',
+    'α 衰变两圆外切，β 衰变两圆内切；半径比 r₁ : r₂ = q₂ : q₁，可以反推新核的电荷数。',
+    '动能 E_k = p²/(2m) ∝ 1/m：质量小的粒子带走绝大部分能量。',
+    'γ 射线不带电，在磁场中不偏转；γ 光子常伴随 α、β 衰变放出。',
+  ],
+  chain: [
+    '先用质量数算 α 次数：x = ΔA/4（β 衰变不改变 A）。',
+    '再用电荷数算 β 次数：Z₁ = Z₂ + 2x − y，得 y = 2x − ΔZ。',
+    'β 衰变的实质：核内一个中子变成一个质子和一个电子，电子被发射出来。',
+    '每次 α 衰变中子数和质子数各减 2；每次 β 衰变中子数减 1、质子数加 1。',
+  ],
+};
+function updatePanel() {
+  ['half', 'track', 'chain'].forEach(m => { $(m + 'Panel').style.display = st.mode === m ? '' : 'none'; });
+  $('concl').innerHTML = CONCL[st.mode].map(s => `<li>${s}</li>`).join('');
+  let rows = '', html = '';
+  if (st.mode === 'half') {
+    const t = st.u * tMax(), n = alive(t), N = st.N0;
+    $('ttv').textContent = `${fmt(t / st.T, 2)} T`;
+    $('hint').textContent = '每个原子核什么时候衰变是随机的；点"重新随机"再做一次';
+    rows = `<tr><td>经过时间 t</td><td>${fmt(t, 2)} 天（${fmt(t / st.T, 2)} T）</td></tr><tr><td>实际剩余</td><td>${n} / ${N}（${fmt(n / N * 100, 1)}%）</td></tr>
+      <tr><td>理论剩余 (½)^(t/T)</td><td>${fmt(Math.pow(0.5, t / st.T) * 100, 1)}%</td></tr><tr><td>温度</td><td>${st.temp} °C（无影响）</td></tr>`;
+    const sd = Math.sqrt(N) / 2;
+    html = `<div class="node"><span class="f">m = m₀(½)^(t/T)</span>，t/T = ${fmt(t / st.T, 2)} → 剩余 <span class="v">${fmt(Math.pow(0.5, t / st.T) * 100, 1)}%</span></div>
+      <div class="link">↓ 统计规律有多"准"</div>
+      <div class="node">${N} 个核经过 1 个 T，剩余个数大约在 <span class="v">${fmt(N / 2 - 2 * sd, 0)} ～ ${fmt(N / 2 + 2 * sd, 0)}</span> 之间（相对偏差约 ${fmt(2 * sd / (N / 2) * 100, 0)}%）<br><span class="n">${N <= 16 ? '个数太少，偏差很大——半衰期对少数原子核没有意义。' : '核越多，实际结果越接近 1/2，所以半衰期只对大量原子核适用。'}</span></div>`;
+  } else if (st.mode === 'track') {
+    const I = trackInfo();
+    $('ttv').textContent = '';
+    $('hint').textContent = `原子核在 O 点静止时衰变；${st.B === 'out' ? '· 表示 B 垂直纸面向外' : '× 表示 B 垂直纸面向里'}`;
+    rows = `<tr><td>衰变方程</td><td>${nucl(I.n.Z, I.n.A)} → ${nucl(I.Zd, I.Ad)} + ${I.a ? '⁴₂He' : '⁰₋₁e'}</td></tr>
+      <tr><td>半径比 r₁ : r₂</td><td>${fmt(I.rp / I.rd, 0)} : 1</td></tr><tr><td>${I.a ? 'α 粒子' : '电子'}动能</td><td>${fmt(I.Ep, 3)} MeV</td></tr><tr><td>新核动能</td><td>${fmt(I.Ed, I.a ? 3 : 6)} MeV</td></tr>`;
+    html = `<div class="node"><span class="f">动量守恒：0 = p₁ − p₂</span> → p₁ = p₂</div>
+      <div class="link">↓ 洛伦兹力提供向心力 qvB = mv²/r</div>
+      <div class="node"><span class="f">r = p/(qB)</span> → <span class="f">r₁ : r₂ = q₂ : q₁</span> = ${I.a ? `${I.Zd} : 2 = ` : ''}<span class="v">${fmt(I.rp / I.rd, 0)} : 1</span><br><span class="n">大圆是${I.a ? ' α 粒子' : '电子'}的径迹，小圆是新核的径迹。</span></div>
+      <div class="link">↓ ${I.a ? '同种电荷、速度反向' : '异种电荷、速度反向'}</div>
+      <div class="node"><span class="v">${I.a ? '受力方向相反 → 两圆外切' : '受力方向相同 → 两圆内切'}</span></div>
+      <div class="link">↓ 能量分配（${I.a ? '' : '忽略中微子，'}E_k = p²/2m）</div>
+      <div class="node"><span class="f">E₁ : E₂ = m₂ : m₁</span> = ${I.Ad} : ${I.a ? 4 : '1/1836'}<br>${I.a ? 'α 粒子' : '电子'}动能 = Q·m₂/(m₁+m₂) = <span class="v">${fmt(I.Ep, 3)} MeV</span>（Q = ${I.n.Q} MeV）</div>`;
+  } else {
+    const s = SERIES[st.series], steps = chainSteps(), k = Math.round(st.u * (steps.length - 1)), p = steps[k];
+    $('ttv').textContent = `第 ${k} 次`;
+    $('hint').textContent = '红箭头 α 衰变，蓝箭头 β 衰变；播放查看每一步';
+    rows = `<tr><td>当前核</td><td>${nucl(p.Z, p.A)}</td></tr><tr><td>质子数 / 中子数</td><td>${p.Z} / ${p.A - p.Z}</td></tr><tr><td>总共 α / β 次数</td><td>${s.na} / ${s.nb}</td></tr>`;
+    html = `<div class="node">设 ${nucl(s.Z, s.A)} → ${nucl(s.Z2, s.A2)} 经过 x 次 α 衰变、y 次 β 衰变</div>
+      <div class="link">↓ 质量数守恒（β 不改变 A）</div>
+      <div class="node"><span class="f">${s.A} = ${s.A2} + 4x</span> → <span class="v">x = ${s.na}</span></div>
+      <div class="link">↓ 电荷数守恒</div>
+      <div class="node"><span class="f">${s.Z} = ${s.Z2} + 2x − y</span> → <span class="v">y = ${s.nb}</span></div>
+      <div class="link">↓ 质子、中子的变化</div>
+      <div class="node">质子数减少 ${s.Z - s.Z2} 个，中子数减少 ${(s.A - s.Z) - (s.A2 - s.Z2)} 个<br><span class="n">验证：中子 2x + y = ${2 * s.na + s.nb}；质子 2x − y = ${2 * s.na - s.nb}。</span></div>`;
+  }
+  $('tbl').innerHTML = rows;
+  $('chain').innerHTML = html;
+}
+
+function render() { draw(); drawChart(); updatePanel(); }
+function sync() { $('tt').value = Math.round(st.u * 1000); render(); }
+const dur = () => st.mode === 'half' ? 10 : st.mode === 'track' ? 6 : (chainSteps().length - 1) * 0.7;
+const anim = Lab.loop(dt => {
+  st.u += dt * st.speed / dur();
+  if (st.u >= 1) { st.u = 1; sync(); $('play').textContent = '▶ 重新开始'; return false; }
+  sync();
+});
+const restart = () => { anim.stop(); st.u = 0; sync(); $('play').textContent = '⏸ 暂停'; anim.start(); };
+$('play').addEventListener('click', () => {
+  if (anim.on) { anim.stop(); $('play').textContent = '▶ 继续'; return; }
+  if (st.u >= 1) st.u = 0;
+  $('play').textContent = '⏸ 暂停'; anim.start();
+});
+$('slow').addEventListener('click', () => { st.speed = st.speed === 1 ? 0.25 : 1; $('slow').classList.toggle('on', st.speed !== 1); });
+$('tt').addEventListener('input', () => { anim.stop(); $('play').textContent = '▶ 继续'; st.u = +$('tt').value / 1000; render(); });
+
+const RNG = { T: v => `${fmt(v, 1)} 天`, temp: v => `${v} °C` };
+Lab.range('T', RNG.T, v => { st.T = v; reroll(); render(); });
+Lab.range('temp', RNG.temp, v => { st.temp = v; render(); });
+Lab.radios('mode', m => { st.mode = m; restart(); });
+Lab.radios('B', v => { st.B = v; render(); });
+$('N0').addEventListener('change', () => { st.N0 = +$('N0').value; reroll(); restart(); });
+$('reroll').addEventListener('click', () => { st.seed++; reroll(); restart(); });
+$('nuc').addEventListener('change', () => { st.nuc = +$('nuc').value; restart(); });
+$('series').addEventListener('change', () => { st.series = +$('series').value; restart(); });
+
+const PRESETS = [
+  ['3 个半衰期剩 1/8', { mode: 'half', N0: 1600, T: 4, temp: 20 }],
+  ['少量原子核：规律不适用', { mode: 'half', N0: 4, T: 4, temp: 20 }],
+  ['升高温度：半衰期不变', { mode: 'half', N0: 400, T: 4, temp: 1000 }],
+  ['α 衰变：两圆外切', { mode: 'track', nuc: 0, B: 'out' }],
+  ['β 衰变：两圆内切', { mode: 'track', nuc: 4, B: 'out' }],
+  ['由半径比求新核电荷数', { mode: 'track', nuc: 1, B: 'in' }],
+  ['²³⁸U → ²⁰⁶Pb：几次 α、β', { mode: 'chain', series: 0 }],
+  ['²³²Th → ²⁰⁸Pb', { mode: 'chain', series: 1 }],
+];
+PRESETS.forEach(([name, o]) => {
+  const btn = document.createElement('button');
+  btn.textContent = name;
+  btn.addEventListener('click', () => {
+    Object.assign(st, o);
+    Lab.setRadio('mode', st.mode); Lab.setRadio('B', st.B);
+    $('N0').value = String(st.N0); $('nuc').value = String(st.nuc); $('series').value = String(st.series);
+    Lab.setRange('T', st.T); Lab.setRange('temp', st.temp);
+    reroll(); restart();
+  });
+  $('presets').appendChild(btn);
+});
+reroll();
+sync();
+</script>
+</body>
+</html>

@@ -41,6 +41,7 @@ window.LABS = {
   'capacitor': { name: '电容器的动态分析', desc: '拖动极板、插电介质，对比 U 不变和 Q 不变两种情况', icon: '▥' },
   'voltammetry': { name: '伏安法测电阻', desc: '电流表内接、外接的误差对比，试触法选择接法', icon: 'Ⓐ' },
   'closed-circuit': { name: '闭合电路欧姆定律', desc: '拖动滑动变阻器，看路端电压、U–I 图线和输出功率；可换成热敏/光敏电阻', icon: 'Ω' },
+  'charged-particle': { name: '带电粒子的圆周运动', desc: '调节磁场、速度与电荷，观察半径、周期和转向', icon: '⊙' },
   'magnetic-particle': { name: '带电粒子在磁场中的运动', desc: '找圆心、求半径；旋转圆、放缩圆、磁聚焦', icon: '↻' },
   'induction-rails': { name: '导体棒切割磁感线', desc: '恒力拉动、初速度滑行，看收尾速度和能量转化', icon: '⇥', home: 'b5c2' },
   'ac-generator': { name: '交变电流的产生', desc: '线圈在磁场中转动，对照 e–t 和 Φ–t 图像', icon: '∿' },
@@ -270,7 +271,7 @@ window.CURRICULUM = [
   {
     id: 'b5', name: '选择性必修第二册', chapters: [
       {
-        id: 'b5c1', num: '第一章', title: '安培力与洛伦兹力', domain: 'em', fig: 'lorentz', labs: ['magnetic-particle'],
+        id: 'b5c1', num: '第一章', title: '安培力与洛伦兹力', domain: 'em', fig: 'lorentz', labs: ['charged-particle', 'magnetic-particle'],
         sections: [
           ['磁场对通电导线的作用力', '安培力方向用左手定则判断，垂直于 B 和 I 决定的平面。', 'F = ILB sinθ'],
           ['磁场对运动电荷的作用力', '洛伦兹力方向用左手定则（四指指向正电荷运动方向）；洛伦兹力始终与速度垂直，永不做功。', 'F = qvB'],

@@ -14,6 +14,7 @@
 - `labs/capacitor.html`：电容器动态分析，对比 U 不变和 Q 不变。
 - `labs/voltammetry.html`：伏安法测电阻，内接、外接误差与试触法。
 - `labs/closed-circuit.html`：闭合电路欧姆定律、U–I 图线、输出功率；可换成热敏/光敏电阻（传感器）。
+- `labs/charged-particle.html`：调节磁场、速度、质量和电荷，观察带电粒子的圆周运动。
 - `labs/magnetic-particle.html`：带电粒子在磁场中的运动，找圆心、旋转圆、放缩圆、磁聚焦。
 - `labs/induction-rails.html`：导体棒切割磁感线，收尾速度与能量转化。
 - `labs/ac-generator.html`：交变电流的产生，e–t 与 Φ–t 图像，峰值、有效值、平均值。
@@ -21,7 +22,6 @@
 - `labs/lc-oscillation.html`：LC 电磁振荡，电场能与磁场能的转化。
 
 适合电脑和平板（横屏或竖屏），不针对手机排版。实验共用 `assets/lab.css` 和 `assets/lab.js`。
-
 ## 其他
 
 - `electric_field.py`：用 matplotlib 生成 `figures/` 里的静态电场线图（需要 `pip install matplotlib numpy`）。

@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>带电粒子在匀强磁场中的圆周运动</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17243b;
+      --muted: #667085;
+      --line: #e3e8f0;
+      --blue: #3164d9;
+      --blue-soft: #edf3ff;
+      --orange: #e86f3d;
+      --paper: #f5f7fb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .page {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 42px 0 32px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .12em;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 40px);
+      line-height: 1.25;
+      letter-spacing: -.03em;
+    }
+
+    .intro {
+      max-width: 720px;
+      margin: 14px 0 28px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.65fr) minmax(290px, .85fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 8px 30px rgba(31, 48, 77, .05);
+    }
+
+    .stage { overflow: hidden; }
+
+    .stage-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stage-title { font-weight: 700; }
+
+    .badge {
+      padding: 5px 10px;
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-radius: 999px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 500px;
+      background: #fbfcff;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      padding: 14px 22px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .line { width: 18px; height: 2px; }
+
+    .controls { padding: 22px; }
+    .controls h2 { margin: 0 0 20px; font-size: 18px; }
+
+    .control { margin-bottom: 18px; }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 9px;
+      font-size: 14px;
+    }
+
+    output {
+      color: var(--blue);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 5px;
+      margin: 6px 0;
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+
+    .segment-label {
+      display: block;
+      margin: 20px 0 9px;
+      font-size: 14px;
+    }
+
+    .segments {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .segment {
+      min-height: 40px;
+      padding: 8px;
+      color: var(--muted);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .segment[aria-pressed="true"] {
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-color: #a9c0f5;
+      font-weight: 700;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .action {
+      min-height: 43px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .action.primary { color: #fff; background: var(--blue); border-color: var(--blue); }
+
+    .readouts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 22px 0 0;
+    }
+
+    .readout {
+      padding: 13px;
+      background: #f7f9fc;
+      border-radius: 10px;
+    }
+
+    .readout dt { color: var(--muted); font-size: 12px; }
+    .readout dd { margin: 5px 0 0; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    .theory {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .theory .card { padding: 22px; }
+    .theory h2 { margin: 0 0 14px; font-size: 17px; }
+
+    .formulas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 22px;
+    }
+
+    .theory p {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .observation { color: var(--ink) !important; }
+
+    footer {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid rgba(49, 100, 217, .25);
+      outline-offset: 3px;
+    }
+
+    @media (max-width: 860px) {
+      .workspace, .theory { grid-template-columns: 1fr; }
+      canvas { height: 430px; }
+    }
+
+    @media (max-width: 520px) {
+      .page { width: min(100% - 24px, 1180px); padding-top: 26px; }
+      .controls, .theory .card { padding: 18px; }
+      .stage-head { padding: 15px 18px; }
+      canvas { height: 360px; }
+      .legend { gap: 10px; padding: 12px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="eyebrow"><a href="../index.html" style="color:inherit;text-decoration:none">← 知识地图</a> · 互动实验 · 磁场</p>
+    <h1>带电粒子的圆周运动</h1>
+    <p class="intro">粒子垂直进入匀强磁场后，洛伦兹力始终指向圆心。改变下面的条件，观察轨迹、运动方向和周期如何变化。</p>
+
+    <section class="workspace" aria-label="带电粒子圆周运动模拟器">
+      <div class="card stage">
+        <div class="stage-head">
+          <span class="stage-title">匀强磁场中的运动轨迹</span>
+          <span class="badge" id="fieldBadge">磁场垂直纸面向里</span>
+        </div>
+        <canvas id="simulation" aria-label="带电粒子圆周运动动画：蓝色为粒子，橙色箭头为洛伦兹力，蓝色箭头为速度"></canvas>
+        <div class="legend">
+          <span><i class="dot" style="background:#3164d9"></i>带电粒子</span>
+          <span><i class="line" style="background:#3164d9"></i>速度 v</span>
+          <span><i class="line" style="background:#e86f3d"></i>洛伦兹力 F</span>
+          <span id="fieldLegend">× 表示磁场向里</span>
+        </div>
+      </div>
+
+      <aside class="card controls">
+        <h2>实验条件</h2>
+
+        <span class="segment-label">粒子电性</span>
+        <div class="segments" aria-label="选择粒子电性">
+          <button class="segment" id="positive" aria-pressed="true">正电荷 +q</button>
+          <button class="segment" id="negative" aria-pressed="false">负电荷 −q</button>
+        </div>
+
+        <span class="segment-label">磁场方向</span>
+        <div class="segments" aria-label="选择磁场方向">
+          <button class="segment" id="fieldIn" aria-pressed="true">向里 ×</button>
+          <button class="segment" id="fieldOut" aria-pressed="false">向外 ·</button>
+        </div>
+
+        <div class="control" style="margin-top:22px">
+          <label class="control-label" for="velocity"><span>初速度 v</span><output id="velocityValue">3.0</output></label>
+          <input id="velocity" type="range" min="1" max="5" step="0.1" value="3">
+        </div>
+        <div class="control">
+          <label class="control-label" for="field"><span>磁感应强度 B</span><output id="fieldValue">1.0</output></label>
+          <input id="field" type="range" min="1" max="4" step="0.1" value="1">
+        </div>
+        <div class="control">
+          <label class="control-label" for="mass"><span>粒子质量 m</span><output id="massValue">1.0</output></label>
+          <input id="mass" type="range" min="1" max="3" step="0.1" value="1">
+        </div>
+        <div class="control">
+          <label class="control-label" for="charge"><span>电荷量大小 |q|</span><output id="chargeValue">1.0</output></label>
+          <input id="charge" type="range" min="1" max="2" step="0.1" value="1">
+        </div>
+
+        <div class="actions">
+          <button class="action primary" id="toggle">暂停</button>
+          <button class="action" id="reset">重置</button>
+        </div>
+
+        <dl class="readouts">
+          <div class="readout"><dt>轨道半径 r</dt><dd id="radius">3.00</dd></div>
+          <div class="readout"><dt>运动周期 T</dt><dd id="period">6.28</dd></div>
+        </dl>
+      </aside>
+    </section>
+
+    <section class="theory">
+      <article class="card">
+        <h2>为什么会做圆周运动？</h2>
+        <div class="formulas"><span>r = mv / |q|B</span><span>T = 2πm / |q|B</span></div>
+        <p>洛伦兹力始终与速度垂直，只改变速度方向，不改变速度大小，因此不对粒子做功。周期与速度无关。</p>
+      </article>
+      <article class="card">
+        <h2>试一试</h2>
+        <p class="observation" id="observation">增大初速度，半径会增大；周期保持不变。</p>
+        <p>再试试只改变电性或磁场方向：半径和周期不变，粒子的转向会反转。</p>
+      </article>
+    </section>
+
+    <footer>模型假设：匀强磁场，初速度垂直于磁场，只受洛伦兹力，忽略重力与相对论效应。参数采用相对单位；轨迹过大时自动缩小显示，数值不受影响。</footer>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('simulation');
+    const ctx = canvas.getContext('2d');
+    const defaults = { velocity: 3, field: 1, mass: 1, charge: 1, chargeSign: 1, fieldSign: -1 };
+    const state = { ...defaults, theta: 0, running: true, lastTime: 0 };
+    const inputs = ['velocity', 'field', 'mass', 'charge'];
+
+    function values() {
+      return Object.fromEntries(inputs.map(id => [id, Number(document.getElementById(id).value)]));
+    }
+
+    function physics() {
+      const v = values();
+      const radius = v.mass * v.velocity / (v.charge * v.field);
+      const period = 2 * Math.PI * v.mass / (v.charge * v.field);
+      const omega = -state.chargeSign * state.fieldSign * v.charge * v.field / v.mass;
+      return { ...v, radius, period, omega };
+    }
+
+    function updateReadouts() {
+      const p = physics();
+      inputs.forEach(id => {
+        document.getElementById(id + 'Value').value = p[id].toFixed(1);
+      });
+      document.getElementById('radius').textContent = p.radius.toFixed(2);
+      document.getElementById('period').textContent = p.period.toFixed(2);
+      document.getElementById('positive').setAttribute('aria-pressed', state.chargeSign === 1);
+      document.getElementById('negative').setAttribute('aria-pressed', state.chargeSign === -1);
+      document.getElementById('fieldIn').setAttribute('aria-pressed', state.fieldSign === -1);
+      document.getElementById('fieldOut').setAttribute('aria-pressed', state.fieldSign === 1);
+      const inward = state.fieldSign === -1;
+      document.getElementById('fieldBadge').textContent = inward ? '磁场垂直纸面向里' : '磁场垂直纸面向外';
+      document.getElementById('fieldLegend').textContent = inward ? '× 表示磁场向里' : '· 表示磁场向外';
+      document.getElementById('toggle').textContent = state.running ? '暂停' : '继续';
+    }
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function arrow(x, y, dx, dy, color) {
+      const length = Math.hypot(dx, dy);
+      if (!length) return;
+      const ux = dx / length;
+      const uy = dy / length;
+      const endX = x + dx;
+      const endY = y + dy;
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(endX - ux * 10 - uy * 5, endY - uy * 10 + ux * 5);
+      ctx.lineTo(endX - ux * 10 + uy * 5, endY - uy * 10 - ux * 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawField(width, height) {
+      ctx.strokeStyle = '#dce4f2';
+      ctx.fillStyle = '#a8b6ce';
+      ctx.lineWidth = 1.2;
+      const spacing = width < 500 ? 45 : 55;
+      for (let x = spacing / 2; x < width; x += spacing) {
+        for (let y = spacing / 2; y < height; y += spacing) {
+          if (state.fieldSign === -1) {
+            ctx.beginPath();
+            ctx.moveTo(x - 4, y - 4);
+            ctx.lineTo(x + 4, y + 4);
+            ctx.moveTo(x + 4, y - 4);
+            ctx.lineTo(x - 4, y + 4);
+            ctx.stroke();
+          } else {
+            ctx.beginPath();
+            ctx.arc(x, y, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    function draw() {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const p = physics();
+      ctx.clearRect(0, 0, width, height);
+      drawField(width, height);
+
+      const cx = width / 2;
+      const cy = height / 2;
+      const maxRadius = Math.min(width * .36, height * .38);
+      const pixelsPerUnit = Math.min(24, maxRadius / p.radius);
+      const r = p.radius * pixelsPerUnit;
+      const x = cx + r * Math.cos(state.theta);
+      const y = cy - r * Math.sin(state.theta);
+
+      ctx.setLineDash([6, 7]);
+      ctx.strokeStyle = '#9db5e8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = '#c4cede';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.fillStyle = '#7e8da6';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      const vx = -Math.sin(state.theta) * p.omega;
+      const vy = -Math.cos(state.theta) * p.omega;
+      const vLength = Math.hypot(vx, vy) || 1;
+      arrow(x, y, vx / vLength * 58, vy / vLength * 58, '#3164d9');
+      const fx = cx - x;
+      const fy = cy - y;
+      const fLength = Math.hypot(fx, fy) || 1;
+      arrow(x, y, fx / fLength * 48, fy / fLength * 48, '#e86f3d');
+
+      ctx.fillStyle = '#3164d9';
+      ctx.shadowColor = 'rgba(49,100,217,.3)';
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.arc(x, y, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(state.chargeSign === 1 ? '+' : '−', x, y + .5);
+
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#667085';
+      ctx.font = '12px "Microsoft YaHei", sans-serif';
+      ctx.fillText(p.omega > 0 ? '逆时针运动' : '顺时针运动', 16, 26);
+      ctx.fillText('O', cx + 8, cy + 17);
+    }
+
+    function animate(time) {
+      const delta = state.lastTime ? Math.min((time - state.lastTime) / 1000, .05) : 0;
+      state.lastTime = time;
+      if (state.running) state.theta += physics().omega * delta;
+      draw();
+      requestAnimationFrame(animate);
+    }
+
+    inputs.forEach(id => {
+      document.getElementById(id).addEventListener('input', () => {
+        updateReadouts();
+        const observations = {
+          velocity: '只增大初速度：半径增大，周期不变。',
+          field: '只增大磁感应强度：半径和周期都减小。',
+          mass: '只增大粒子质量：半径和周期都增大。',
+          charge: '只增大电荷量大小：半径和周期都减小。'
+        };
+        document.getElementById('observation').textContent = observations[id];
+      });
+    });
+
+    function reverseDirection(key, value) {
+      state[key] = value;
+      state.theta = physics().omega >= 0 ? 0 : Math.PI;
+      document.getElementById('observation').textContent = '只改变电性或磁场方向：转向反转，半径和周期不变。';
+      updateReadouts();
+    }
+
+    document.getElementById('positive').addEventListener('click', () => reverseDirection('chargeSign', 1));
+    document.getElementById('negative').addEventListener('click', () => reverseDirection('chargeSign', -1));
+    document.getElementById('fieldIn').addEventListener('click', () => reverseDirection('fieldSign', -1));
+    document.getElementById('fieldOut').addEventListener('click', () => reverseDirection('fieldSign', 1));
+
+    document.getElementById('toggle').addEventListener('click', () => {
+      state.running = !state.running;
+      updateReadouts();
+    });
+
+    document.getElementById('reset').addEventListener('click', () => {
+      Object.assign(state, defaults, { theta: 0, running: true });
+      inputs.forEach(id => { document.getElementById(id).value = defaults[id]; });
+      document.getElementById('observation').textContent = '增大初速度，半径会增大；周期保持不变。';
+      updateReadouts();
+    });
+
+    new ResizeObserver(resize).observe(canvas);
+    resize();
+    updateReadouts();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

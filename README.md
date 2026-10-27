@@ -54,6 +54,10 @@
 
 适合电脑和平板（横屏或竖屏），不针对手机排版。实验共用 `assets/lab.css` 和 `assets/lab.js`。
 
+## 待完善
+
+还没覆盖的考点（学生实验、楞次定律、自感、α 散射、结合能等）和建议顺序见 [ROADMAP.md](ROADMAP.md)。
+
 ## 其他
 
 - `electric_field.py`：用 matplotlib 生成 `figures/` 里的静态电场线图（需要 `pip install matplotlib numpy`）。
